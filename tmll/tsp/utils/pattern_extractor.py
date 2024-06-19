@@ -46,7 +46,7 @@ class PatternExtractor:
         }
 
     @staticmethod
-    def extract_xy_tree(input: str) -> Dict[str, Dict[str, int]]:
+    def extract_tree(input: str) -> Dict[str, Dict[str, int]]:
         pattern = r"^([\w\[\]:.]+)\s+\(([\w\[\]:.]+),\s+(\d+)\)\s+(-?\d+)$"
 
         result = {}
@@ -59,7 +59,7 @@ class PatternExtractor:
                 node_name, _, node_id, parent_id = match.groups()
                 result[node_name] = {
                     "id": int(node_id),
-                    "parent_id": int(parent_id) if int(parent_id) != -1 else None
+                    "parent_id": int(parent_id)
                 }
 
         return result

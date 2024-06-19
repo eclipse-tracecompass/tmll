@@ -33,5 +33,5 @@ class TreeService(TSPService):
             return execution
 
         process_output = execution["output"]
-        tree = PatternExtractor.extract_xy_tree(process_output)
+        tree = PatternExtractor.extract_tree(process_output)
         return tree
