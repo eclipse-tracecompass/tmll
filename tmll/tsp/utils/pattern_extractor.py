@@ -44,3 +44,22 @@ class PatternExtractor:
             "name": name.strip(),
             "id": output_id.strip()
         }
+
+    @staticmethod
+    def extract_xy_tree(input: str) -> Dict[str, Dict[str, int]]:
+        pattern = r"^([\w\[\]:.]+)\s+\(([\w\[\]:.]+),\s+(\d+)\)\s+(-?\d+)$"
+
+        result = {}
+        for line in input.splitlines():
+            # Remove leading special characters until reaching an alphabetical letter
+            cleaned_line = re.sub(r"^[^a-zA-Z]+", "", line)
+
+            match = re.match(pattern, cleaned_line)
+            if match:
+                node_name, _, node_id, parent_id = match.groups()
+                result[node_name] = {
+                    "id": int(node_id),
+                    "parent_id": int(parent_id) if int(parent_id) != -1 else None
+                }
+
+        return result

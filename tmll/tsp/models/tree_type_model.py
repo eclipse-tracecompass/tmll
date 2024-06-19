@@ -2,5 +2,5 @@ from enum import Enum
 
 class TreeTypeModel(Enum):
     XY = "xy"
-    TABLE = "table"
+    DATA = "data"
     TIMEGRAPH = "timegraph"

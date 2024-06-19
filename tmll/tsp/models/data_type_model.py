@@ -2,5 +2,5 @@ from enum import Enum
 
 class DataTypeModel(Enum):
     XY = "xy"
-    TABLE = "table"
+    DATA = "data"
     TIMEGRAPH = "timegraph"
