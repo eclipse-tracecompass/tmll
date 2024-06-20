@@ -19,16 +19,28 @@ AVAILABLE_ENCODE_METHODS = ["onehot", "ordinal"]
 class Encoder:
 
     def __init__(self, dataset: pd.DataFrame, method: str = "onehot") -> None:
+        """Initialize the Encoder class.
+
+        Args:
+            dataset (pd.DataFrame): The dataset to be encoded.
+            method (str, optional): The encoding method. Use get_encoding_methods() to see the available encoding methods. Defaults to "onehot".
+        """
         self.dataset = dataset.copy()
         self.method = method
 
     def encode(self, target_features: list[str] = []) -> pd.DataFrame:
-        """
-        Encode the data based on the selected method.
+        """Encode the data based on the selected method (useful for encoding the categorical features)
+
+        Args:
+            target_features (list[str], optional): Which features to be encoded. If empty, all the dataset will be encoded. Defaults to [].
+
+        Raises:
+            ValueError: If the encode method is not among the available encode methods.
 
         Returns:
-            pd.DataFrame: The encoded data.
+            pd.DataFrame: The encoded dataset.
         """
+
         if self.method == "onehot":
             encoder = OneHotEncoder(
                 sparse=False, drop="first", handle_unknown="error")
@@ -47,3 +59,12 @@ class Encoder:
                 self.dataset[target_features])
 
         return self.dataset
+
+    @staticmethod
+    def get_encoding_methods() -> list[str]:
+        """Get the available encoding methods.
+
+        Returns:
+            list[str]: The available encoding methods.
+        """
+        return AVAILABLE_ENCODE_METHODS

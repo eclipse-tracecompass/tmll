@@ -20,16 +20,29 @@ AVAILABLE_NORMALIZE_METHODS = ["standard", "minmax", "maxabs", "robust"]
 class Normalizer:
 
     def __init__(self, dataset: pd.DataFrame, method: str = "standard"):
+        """Initialize the Normalizer class.
+
+        Args:
+            dataset (pd.DataFrame): The dataset to be normalized.
+            method (str, optional): The normalization method. Use get_normalize_methods() to see the available normalization methods. Defaults to "standard".
+        """
+
         self.dataset = dataset.copy()
         self.method = method
 
     def normalize(self, target_features: list[str] = []) -> pd.DataFrame:
-        """
-        Normalize the data based on the selected method.
+        """Normalize the data based on the selected method.
+
+        Args:
+            target_features (list[str], optional): Which features to be normalized. If empty, all the dataset will be normalized. Defaults to [].
+
+        Raises:
+            ValueError: If the normalize method is not among the available normalize methods.
 
         Returns:
-            pd.DataFrame: The normalized data.
+            pd.DataFrame: The normalized dataset.
         """
+
         if self.method == "standard":
             scaler = StandardScaler()
         elif self.method == "minmax":
@@ -51,3 +64,12 @@ class Normalizer:
                 self.dataset[target_features])
 
         return self.dataset
+
+    @staticmethod
+    def get_normalize_methods() -> list[str]:
+        """Get the available normalization methods.
+
+        Returns:
+            list[str]: The available normalization methods.
+        """
+        return AVAILABLE_NORMALIZE_METHODS

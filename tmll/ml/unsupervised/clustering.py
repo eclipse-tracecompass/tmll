@@ -29,6 +29,8 @@ from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_har
 from scipy.cluster import hierarchy
 from scipy.cluster.hierarchy import cut_tree
 
+from tqdm import tqdm
+
 from tmll.ml.preprocess.normalizer import Normalizer
 from tmll.ml.preprocess.outlier_remover import OutlierRemover
 from tmll.ml.preprocess.encoder import Encoder
@@ -82,7 +84,7 @@ class Clustering:
 
         if len(self.keep_features) > 0:
             self.dataset = FeatureManipulator.Basic(
-                self.dataset).select_features(self.keep_features)
+                self.dataset).keep_features(self.keep_features)
 
         if len(self.categorical_features) > 0:
             self.dataset = Encoder(
@@ -95,3 +97,27 @@ class Clustering:
         if remove_outliers:
             self.dataset = OutlierRemover(
                 self.dataset, method=self.remove_outliers_method).remove_outliers()
+
+    def __get_optimal_n_clusters(self, max_n_clusters: int = 5) -> int:
+        """Get the optimal number of clusters based on the silhouette score. This is useful when the we do not know how many clusters are in the data.
+
+        Args:
+            max_n_clusters (int, optional): The maximum number of clusters that the search algorithm should check. Defaults to 5.
+
+        Returns:
+            int: The optimal number of clusters.
+        """
+
+        silhouette_scores = []
+
+        for i in tqdm(range(2, max_n_clusters + 1)):
+            if i >= len(self.dataset):
+                print("Stopping the search for the optimal number of clusters because the number of clusters is greater than or equal to the number of data points.")
+                break
+
+            model = KMeans(n_clusters=i, random_state=self.random_state)
+            model.fit(self.dataset)
+            silhouette_scores.append(silhouette_score(
+                self.dataset, model.labels_))
+
+        return silhouette_scores.index(max(silhouette_scores)) + 2
