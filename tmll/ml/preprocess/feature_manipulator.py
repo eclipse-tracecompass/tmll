@@ -81,17 +81,14 @@ class FeatureManipulator:
             elif self.method == "selectkbest":
                 # Check if the target feature is provided
                 if target_feature is None:
-                    raise ValueError(
-                        "The target feature should be provided for the SelectKBest method.")
+                    raise ValueError("The target feature should be provided for the SelectKBest method.")
 
                 selector = SelectKBest(f_classif, k=self.k)
-                self.dataset = pd.DataFrame(selector.fit_transform(
-                    self.dataset, self.dataset[target_feature]))
+                self.dataset = pd.DataFrame(selector.fit_transform(self.dataset, self.dataset[target_feature]))
             elif self.method == "tsne":
                 tsne = TSNE(n_components=self.k)
                 self.dataset = pd.DataFrame(tsne.fit_transform(self.dataset))
             else:
-                raise ValueError(
-                    f"The selection method is not among the available selection methods, which are {', '.join(self.AVAILABLE_SELECTION_METHODS)}.")
+                raise ValueError(f"The selection method is not among the available selection methods, which are {', '.join(self.AVAILABLE_SELECTION_METHODS)}.")
 
             return self.dataset

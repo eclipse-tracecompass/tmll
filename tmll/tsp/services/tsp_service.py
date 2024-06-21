@@ -18,16 +18,22 @@ class TSPService:
         self.tsp_client_name = tsp_client_name
 
     def is_tsp_client_path_valid(self) -> bool:
-        """
-        Check if the TSP client path is valid.
-        We can also query a simple -h or --help command to check if the TSP client is working, but this is not implemented here.
+        """This method checks if the TSP client path is valid.
+
+        Returns:
+            bool: True if the TSP client path is valid, False otherwise.
         """
 
         return PathValidator.is_path_valid(self.tsp_client_path)
 
     def run_tsp_command(self, command: list[str]) -> dict[str, str]:
-        """
-        Run a TSP command with the given arguments. This method is used by all TSP services.
+        """This method runs a TSP command in the command line/terminal.
+
+        Args:
+            command (list[str]): The command to be run as a list of strings.
+
+        Returns:
+            dict[str, str]: A dictionary containing the output of the command if successful, or an error message if not. 
         """
 
         # Check if the TSP client path is valid
@@ -35,8 +41,7 @@ class TSPService:
             return {"error": "Invalid TSP client path."}
 
         # Run the TSP command
-        process = subprocess.run(
-            command, cwd=self.tsp_client_path, capture_output=True, shell=True)
+        process = subprocess.run(command, cwd=self.tsp_client_path, capture_output=True, shell=True)
 
         process_output = process.stdout.decode("utf-8").strip()
 

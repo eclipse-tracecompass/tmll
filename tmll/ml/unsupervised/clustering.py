@@ -65,38 +65,30 @@ class Clustering:
 
         # If number of clusters is less than 2, raise an error
         if self.n_clusters < 2:
-            raise ValueError(
-                "The number of clusters should be greater than or equal to 2.")
+            raise ValueError("The number of clusters should be greater than or equal to 2.")
 
         # If the number of features is less than the number of clusters, raise an error
         if len(self.dataset.columns) < self.n_clusters:
-            raise ValueError(
-                "The number of features is less than the number of clusters.")
+            raise ValueError("The number of features is less than the number of clusters.")
 
         # If the model is not among the available models, raise an error
         if self.model not in AVALIABLE_MODELS:
-            raise ValueError(
-                f"The model is not among the available models, which are {', '.join(AVALIABLE_MODELS)}.")
+            raise ValueError(f"The model is not among the available models, which are {', '.join(AVALIABLE_MODELS)}.")
 
         if len(self.ignore_features) > 0:
-            self.dataset = FeatureManipulator.Basic(
-                self.dataset).remove_features(self.ignore_features)
+            self.dataset = FeatureManipulator.Basic(self.dataset).remove_features(self.ignore_features)
 
         if len(self.keep_features) > 0:
-            self.dataset = FeatureManipulator.Basic(
-                self.dataset).keep_features(self.keep_features)
+            self.dataset = FeatureManipulator.Basic(self.dataset).keep_features(self.keep_features)
 
         if len(self.categorical_features) > 0:
-            self.dataset = Encoder(
-                self.dataset, method=self.encoding_method).encode(self.categorical_features)
+            self.dataset = Encoder(self.dataset, method=self.encoding_method).encode(self.categorical_features)
 
         if normalize:
-            self.dataset = Normalizer(
-                self.dataset, method=self.normalize_method).normalize()
+            self.dataset = Normalizer(self.dataset, method=self.normalize_method).normalize()
 
         if remove_outliers:
-            self.dataset = OutlierRemover(
-                self.dataset, method=self.remove_outliers_method).remove_outliers()
+            self.dataset = OutlierRemover(self.dataset, method=self.remove_outliers_method).remove_outliers()
 
     def __get_optimal_n_clusters(self, max_n_clusters: int = 5) -> int:
         """Get the optimal number of clusters based on the silhouette score. This is useful when the we do not know how many clusters are in the data.
@@ -117,7 +109,6 @@ class Clustering:
 
             model = KMeans(n_clusters=i, random_state=self.random_state)
             model.fit(self.dataset)
-            silhouette_scores.append(silhouette_score(
-                self.dataset, model.labels_))
+            silhouette_scores.append(silhouette_score(self.dataset, model.labels_))
 
         return silhouette_scores.index(max(silhouette_scores)) + 2

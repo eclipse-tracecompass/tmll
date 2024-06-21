@@ -52,16 +52,13 @@ class Normalizer:
         elif self.method == "robust":
             scaler = RobustScaler()
         else:
-            raise ValueError(
-                f"The normalize method is not among the available normalize methods, which are {', '.join(AVAILABLE_NORMALIZE_METHODS)}.")
+            raise ValueError(f"The normalize method is not among the available normalize methods, which are {', '.join(AVAILABLE_NORMALIZE_METHODS)}.")
 
         # If target features are not provided, normalize all the features, otherwise normalize the target features
         if len(target_features) == 0:
-            self.dataset = pd.DataFrame(scaler.fit_transform(
-                self.dataset), columns=self.dataset.columns)
+            self.dataset = pd.DataFrame(scaler.fit_transform(self.dataset), columns=self.dataset.columns)
         else:
-            self.dataset[target_features] = scaler.fit_transform(
-                self.dataset[target_features])
+            self.dataset[target_features] = scaler.fit_transform(self.dataset[target_features])
 
         return self.dataset
 

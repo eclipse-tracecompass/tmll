@@ -45,27 +45,22 @@ class OutlierRemover:
 
         if self.method == "zscore":
             if len(target_features) == 0:
-                self.dataset = self.dataset[(
-                    zscore(self.dataset) < self.threshold).all(axis=1)]
+                self.dataset = self.dataset[(zscore(self.dataset) < self.threshold).all(axis=1)]
             else:
-                self.dataset = self.dataset[(
-                    zscore(self.dataset[target_features]) < self.threshold).all(axis=1)]
+                self.dataset = self.dataset[(zscore(self.dataset[target_features]) < self.threshold).all(axis=1)]
         elif self.method == "iqr":
             if len(target_features) == 0:
                 Q1 = self.dataset.quantile(0.25)
                 Q3 = self.dataset.quantile(0.75)
                 IQR = Q3 - Q1
-                self.dataset = self.dataset[~(
-                    (self.dataset < (Q1 - 1.5 * IQR)) | (self.dataset > (Q3 + 1.5 * IQR))).any(axis=1)]
+                self.dataset = self.dataset[~((self.dataset < (Q1 - 1.5 * IQR)) | (self.dataset > (Q3 + 1.5 * IQR))).any(axis=1)]
             else:
                 Q1 = self.dataset[target_features].quantile(0.25)
                 Q3 = self.dataset[target_features].quantile(0.75)
                 IQR = Q3 - Q1
-                self.dataset = self.dataset[~(
-                    (self.dataset[target_features] < (Q1 - 1.5 * IQR)) | (self.dataset[target_features] > (Q3 + 1.5 * IQR))).any(axis=1)]
+                self.dataset = self.dataset[~((self.dataset[target_features] < (Q1 - 1.5 * IQR)) | (self.dataset[target_features] > (Q3 + 1.5 * IQR))).any(axis=1)]
         else:
-            raise ValueError(
-                f"The remove outliers method is not among the available remove outliers methods, which are {', '.join(AVAILABLE_OUTLIERS_METHODS)}.")
+            raise ValueError(f"The remove outliers method is not among the available remove outliers methods, which are {', '.join(AVAILABLE_OUTLIERS_METHODS)}.")
 
         return self.dataset
 
