@@ -2,7 +2,7 @@ from typing import Dict, Union
 from tmll.tsp.services.tsp_service import TSPService
 from tmll.tsp.utils.pattern_extractor import PatternExtractor
 
-AVAILABLE_TREE_TYPES = ["xy", "timegraph", "data"]
+AVAILABLE_TREE_TYPES = ["xy", "timegraph", "table"]
 
 
 class TreeService(TSPService):
@@ -53,6 +53,6 @@ class TreeService(TSPService):
         if "error" in execution:
             return execution
 
-        process_output = execution["output"]
+        process_output = execution.get("output", "")
         tree = PatternExtractor.extract_tree(process_output)
         return tree

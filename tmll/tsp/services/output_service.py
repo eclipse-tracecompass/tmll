@@ -21,7 +21,7 @@ class OutputService(TSPService):
         if "error" in execution:
             return execution
 
-        process_output = execution["output"]
+        process_output = execution.get("output", "")
 
         outputs = []
         for output in process_output.splitlines():

@@ -23,7 +23,7 @@ class ExperimentService(TSPService):
         if "error" in execution:
             return execution
 
-        process_output = execution["output"]
+        process_output = execution.get("output", "")
 
         # Just get the second line of the output (all the information about the experiment is in the second line)
         process_output = process_output.splitlines()[2]

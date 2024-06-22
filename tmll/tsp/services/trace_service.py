@@ -28,7 +28,7 @@ class TraceService(TSPService):
             if "error" in execution:
                 return execution
 
-            process_output = execution["output"]
+            process_output = execution.get("output", "")
 
             # Extract the trace features
             trace_features = PatternExtractor.extract_trace_experiment_features(process_output)
@@ -67,7 +67,7 @@ class TraceService(TSPService):
         if "error" in execution:
             return execution
 
-        process_output = execution["output"]
+        process_output = execution.get("output", "")
 
         traces = process_output.splitlines()
 

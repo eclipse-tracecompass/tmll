@@ -1,5 +1,5 @@
 import re
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Tuple
 from types import NoneType
 
 
@@ -63,3 +63,13 @@ class PatternExtractor:
                 }
 
         return result
+
+    @staticmethod
+    def extract_xy_values(input: str) -> Tuple[List[str], List[str]]:
+        try:
+            x_values = re.findall(r"Series X-values: \[(.*)\]", input)[0].split(',')
+            y_values = re.findall(r"Series Y-values: \[(.*)\]", input)[0].split(',')
+
+            return x_values, y_values
+        except Exception as e:
+            return [], []
