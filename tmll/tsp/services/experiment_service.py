@@ -1,12 +1,14 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import List, Optional
 
+from tmll.tsp.models.response.base import BaseResponse
+from tmll.tsp.models.response.experiment import ExperimentResponse
 from tmll.tsp.services.tsp_service import TSPService
 from tmll.tsp.utils.pattern_extractor import PatternExtractor
 
 
 class ExperimentService(TSPService):
 
-    def create_experiment(self, trace_uuids: List[str], name: str) -> Union[Dict[str, str], Dict[str, Union[str, int]]]:
+    def create_experiment(self, trace_uuids: List[str], name: str) -> BaseResponse[ExperimentResponse]:
         """Create an experiment with the given traces.
 
         Args:
@@ -14,16 +16,16 @@ class ExperimentService(TSPService):
             name (str): The name of the experiment.
 
         Returns:
-            Union[Dict[str, str], Dict[str, Union[str, int]]]: A dictionary containing the experiment features (e.g., UUID, name, start time, end time, number of events, and traces).
+            BaseResponse[ExperimentResponse]: The experiment response containing the UUID, name, start time, end time, and number of events.
         """
 
         # Create an experiment with the given traces
         command = ["python3", self.tsp_client_name, "--open-experiment", name, "--uuids", *trace_uuids]
         execution = self.run_tsp_command(command)
-        if "error" in execution:
-            return execution
+        if execution.error or execution.result is None:
+            return BaseResponse(error=execution.error)
 
-        process_output = execution.get("output", "")
+        process_output = execution.result
 
         # Just get the second line of the output (all the information about the experiment is in the second line)
         process_output = process_output.splitlines()[2]
@@ -31,18 +33,18 @@ class ExperimentService(TSPService):
         # Extract the experiment UUID, name, start time, end time, and number of events
         experiment = PatternExtractor.extract_trace_experiment_features(process_output)
         if experiment is None:
-            return {"error": f"Error extracting features for experiment {name}"}
+            return BaseResponse(error=f"Error extracting features for experiment {name}")
 
-        return experiment
+        return BaseResponse(result=ExperimentResponse.from_trace_response(experiment))
 
-    def list_experiments(self, uuid: Optional[str] = None) -> Union[Dict[str, str], List]:
+    def list_experiments(self, uuid: Optional[str] = None) -> BaseResponse[List[ExperimentResponse]]:
         """Get the list of experiments from the TSP server.
 
         Args:
             uuid (Optional[str], optional): The UUID of the experiment to get. If None, all experiments will be returned. Defaults to None.
 
         Returns:
-            Union[Dict[str, str], List]: A dictionary containing the experiments and their features (e.g., UUID, name, start time, end time, number of events, and traces).
+            BaseResponse[List[ExperimentResponse]]: The list of experiments from the TSP server.
         """
 
         # Get the list of experiments
@@ -53,11 +55,11 @@ class ExperimentService(TSPService):
         else:
             command.append("--list-experiments")
 
-        executions = self.run_tsp_command(command)
-        if "error" in executions:
-            return executions
+        execution = self.run_tsp_command(command)
+        if execution.error or execution.result is None:
+            return BaseResponse(error=execution.error)
 
-        process_output = executions["output"]
+        process_output = execution.result
 
         experiments = []
 
@@ -67,15 +69,14 @@ class ExperimentService(TSPService):
 
             experiment_info = PatternExtractor.extract_trace_experiment_features(lines[0])
             if experiment_info:
-                exp: dict[str, Any] = experiment_info.copy()
+                exp = ExperimentResponse.from_trace_response(experiment_info)
 
                 # Skipping the first line which is experiment and the "Trace(s):" line
                 for line in lines[2:]:
                     trace_info = PatternExtractor.extract_trace_experiment_features(line)
                     if trace_info:
-                        exp["traces"] = exp.get("traces", [])
-                        exp["traces"].append(trace_info)
+                        exp.traces.append(trace_info)
 
                 experiments.append(exp)
 
-        return experiments
+        return BaseResponse(result=experiments)

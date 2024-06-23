@@ -1,5 +1,8 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import List
 
+from tmll.tsp.models.response.base import BaseResponse
+from tmll.tsp.models.response.data.table import TableDataResponse, TableDataRowResponse
+from tmll.tsp.models.response.data.xy import XYDataResponse
 from tmll.tsp.services.tsp_service import TSPService
 from tmll.tsp.utils.pattern_extractor import PatternExtractor
 
@@ -8,7 +11,7 @@ AVAILABLE_DATA_TYPES = ["xy", "timegraph", "table"]
 
 class DataService(TSPService):
 
-    def get_data(self, uuid: str, output_id: str, data_type: str, **kwargs) -> Union[Dict[str, str], Dict[Any, Any]]:
+    def get_data(self, uuid: str, output_id: str, data_type: str, **kwargs) -> BaseResponse:
         """Get the data for the given UUID, output, and data type.
 
         Args:
@@ -17,7 +20,7 @@ class DataService(TSPService):
             data_type (str): The type of data to get. You can use get_data_types() to get the available data types.
 
         Returns:
-            Union[Dict[str, str], Dict[Any, Any]]: The data for the given UUID, output, and data type.
+            BaseResponse: The data for the given UUID, output, and data type.
         """
 
         # Get the data for the given UUID, output, and data type
@@ -31,7 +34,7 @@ class DataService(TSPService):
             return self.__get_table_data(uuid=uuid, output_id=output_id, start_index=kwargs.get("start_index", 0),
                                          num_items=kwargs.get("num_items", 100), get_all=kwargs.get("get_all", False))
         else:
-            return {"error": f"Invalid data type. Available data types: {', '.join(AVAILABLE_DATA_TYPES)}"}
+            return BaseResponse(error=f"Invalid data type. Available data types: {', '.join(AVAILABLE_DATA_TYPES)}")
 
     @staticmethod
     def get_data_types() -> List[str]:
@@ -42,7 +45,7 @@ class DataService(TSPService):
         """
         return AVAILABLE_DATA_TYPES
 
-    def __get_xy_data(self, uuid: str, output_id: str, items: List[int], start_time: int, end_time: int, num_items: Optional[int] = 100, get_all: Optional[bool] = False) -> Union[Dict[str, str], Dict[str, List[Union[int, float]]]]:
+    def __get_xy_data(self, uuid: str, output_id: str, items: List[int], start_time: int, end_time: int, num_items: int = 100, get_all: bool = False) -> BaseResponse[XYDataResponse]:
         """Get the XY data for the given UUID, output, and other parameters.
 
         Args:
@@ -51,11 +54,11 @@ class DataService(TSPService):
             items (List[int]): Which items to get the XY data for (i.e., derieved from the output's tree structure)
             start_time (int): The start time to get the XY data for.
             end_time (int): The end time to get the XY data for.
-            num_items (Optional[int], optional): The number of items to fetch the data in the given time range. Defaults to 100.
-            get_all (Optional[bool], optional): If True, it will get all of the data points in the given time range. Defaults to False.
+            num_items (int, optional): The number of items to fetch the data in the given time range. Defaults to 100.
+            get_all (bool, optional): If True, it will get all of the data points in the given time range. Defaults to False.
 
         Returns:
-            Union[Dict[str, str], Dict[str, List[Union[int, float]]]]: The XY data for the given UUID, output, and other parameters.
+            BaseResponse[XYResponse]: The XY data for the given UUID, output, and other parameters.
         """
 
         # Initialize the output values
@@ -69,13 +72,18 @@ class DataService(TSPService):
             ]
             execution = self.run_tsp_command(command)
 
-            if "error" in execution:
-                return execution
+            if execution.error or not execution.result:
+                return BaseResponse(error=execution.error)
 
-            process_output = execution.get("output", "")
+            process_output = execution.result
 
             # Extract the XY values from the process output
-            x_values, y_values = PatternExtractor.extract_xy_values(process_output)
+            xy = PatternExtractor.extract_xy_values(process_output)
+            if xy.error or not xy.result:
+                return BaseResponse(error=xy.error)
+
+            x_values = xy.result.x_values
+            y_values = xy.result.y_values
 
             # If there are no XY values, break the loop (i.e., no more data to fetch)
             if not x_values or not y_values or (len(x_values) == 1 and x_values[0] == ''):
@@ -92,29 +100,38 @@ class DataService(TSPService):
             # Update the start time for the next iteration
             start_time = output_x_values[-1] + 1
 
-        return {"x": output_x_values, "y": output_y_values}
+        return BaseResponse(result=XYDataResponse(x_values=output_x_values, y_values=output_y_values))
 
-    def __get_timegraph_data(self, uuid: str, output_id: str) -> Dict[str, str]:
-        # Not implemented yet
-        return {"error": "Not implemented yet."}
+    def __get_timegraph_data(self, uuid: str, output_id: str) -> BaseResponse:
+        """(NOT IMPLEMENTED YET!) Get the timegraph data for the given UUID and output ID.
 
-    def __get_table_data(self, uuid: str, output_id: str, start_index: int, num_items: Optional[int] = 100, column_ids: List[int] = [], get_all: Optional[bool] = False) -> Union[Dict[str, str], Dict[int, List[str]]]:
+        Args:
+            uuid (str): The UUID to get the data from.
+            output_id (str): The output ID to get the data from.
+
+        Returns:
+            BaseResponse: The timegraph data for the given UUID and output ID.
+        """
+
+        return BaseResponse(error="Timegraph data is not implemented yet.")
+
+    def __get_table_data(self, uuid: str, output_id: str, start_index: int, num_items: int = 100, column_ids: List[int] = [], get_all: bool = False) -> BaseResponse[TableDataResponse]:
         """Get the table data for the given UUID, output, and other parameters.
 
         Args:
             uuid (str): The UUID to get the data from.
             output_id (str): The output ID to get the data from.
             start_index (int): The start index to get the table data for.
-            num_items (Optional[int], optional): The number of rows to get the data from the table. Defaults to 100.
+            num_items (int, optional): The number of rows to get the data from the table. Defaults to 100.
             column_ids (List[int], optional): The specific column ids to get the data from the table. Defaults to [].
-            get_all (Optional[bool], optional): If True, it will get all of the data points, starting from the start index until the end of the table. Defaults to False.
+            get_all (bool, optional): If True, it will get all of the data points, starting from the start index until the end of the table. Defaults to False.
 
         Returns:
-            Union[Dict[str, str], Dict[int, List[str]]]: The table data for the given UUID, output, and other parameters.
+            BaseResponse[TableResponse]: The table data for the given UUID, output, and other parameters.
         """
 
         # Initialize the virtual table
-        virtual_table = {}
+        virtual_table = []
 
         while True:
             command = [
@@ -127,29 +144,35 @@ class DataService(TSPService):
                 command.extend(['--table-column-ids'] + list(map(str, column_ids)))
 
             execution = self.run_tsp_command(command)
+            if execution.error or not execution.result:
+                return BaseResponse(error=execution.error)
 
-            if "error" in execution:
-                return execution
-
-            process_output = execution.get("output", "")
+            process_output = execution.result
 
             # Extract the virtual table from the process output
             line_index = -1
+            values = []
             for line in process_output.splitlines():
                 line = line.strip()
                 if line.startswith('index:'):
                     line_index = int(line.split(':')[1].strip())
-                    virtual_table[line_index] = []
                 elif line.startswith('"content":'):
                     content = line[10:].strip().replace('\"', '')
-                    virtual_table[line_index].append(content)
+                    values.append(content)
 
             # If there are no more lines to fetch, break the loop
+            if line_index == -1:
+                break
+
+            # Append the values to the virtual table
+            if values:
+                virtual_table.append(TableDataRowResponse(index=line_index, values=values))
+
             # If not get_all, break the loop (i.e., just one-time data fetch)
-            if line_index == -1 or not get_all:
+            if not get_all:
                 break
 
             # Update the start index for the next iteration
             start_index = line_index + 1
 
-        return virtual_table
+        return BaseResponse(result=TableDataResponse(columns=[], rows=virtual_table))

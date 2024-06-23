@@ -1,5 +1,6 @@
 import subprocess
 
+from tmll.tsp.models.response.base import BaseResponse
 from tmll.tsp.utils.path_validator import PathValidator
 
 
@@ -26,19 +27,19 @@ class TSPService:
 
         return PathValidator.is_path_valid(self.tsp_client_path)
 
-    def run_tsp_command(self, command: list[str]) -> dict[str, str]:
+    def run_tsp_command(self, command: list[str]) -> BaseResponse[str]:
         """This method runs a TSP command in the command line/terminal.
 
         Args:
             command (list[str]): The command to be run as a list of strings.
 
         Returns:
-            dict[str, str]: A dictionary containing the output of the command if successful, or an error message if not. 
+            BaseResponse[str]: The result of the command if successful, or an error message if not.
         """
 
         # Check if the TSP client path is valid
         if not self.is_tsp_client_path_valid():
-            return {"error": "Invalid TSP client path."}
+            return BaseResponse(error="Invalid TSP client path.")
 
         # Run the TSP command
         process = subprocess.run(command, cwd=self.tsp_client_path, capture_output=True, shell=True)
@@ -46,6 +47,6 @@ class TSPService:
         process_output = process.stdout.decode("utf-8").strip()
 
         if process.returncode != 0:
-            return {"error": f"Error running TSP command. Full error: {process_output}"}
+            return BaseResponse(error=f"Error running TSP command. Full error: {process_output}")
 
-        return {"output": process_output}
+        return BaseResponse(result=process_output)
