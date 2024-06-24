@@ -1,7 +1,8 @@
 from typing import List
 
 from tmll.tsp.models.response.base import BaseResponse
-from tmll.tsp.models.response.data.table import TableDataResponse, TableDataRowResponse
+from tmll.tsp.models.response.data.table.column import TableDataColumnResponse
+from tmll.tsp.models.response.data.table.table import TableDataResponse, TableDataRowResponse
 from tmll.tsp.models.response.data.xy import XYDataResponse
 from tmll.tsp.services.tsp_service import TSPService
 from tmll.tsp.utils.pattern_extractor import PatternExtractor
@@ -35,6 +36,32 @@ class DataService(TSPService):
                                          num_items=kwargs.get("num_items", 100), get_all=kwargs.get("get_all", False))
         else:
             return BaseResponse(error=f"Invalid data type. Available data types: {', '.join(AVAILABLE_DATA_TYPES)}")
+
+    def get_table_columns(self, uuid: str, output_id: str) -> BaseResponse[List[TableDataColumnResponse]]:
+        """Get the table columns for the given UUID and output ID.
+
+        Args:
+            uuid (str): The UUID to get the table columns from.
+            output_id (str): The output ID to get the table columns from.
+
+        Returns:
+            BaseResponse: The table columns for the given UUID and output ID.
+        """
+
+        command = ['python', 'tsp_cli_client', '--get-virtual-table-columns', output_id, '--uuid', uuid]
+        execution = self.run_tsp_command(command)
+
+        if execution.error or not execution.result:
+            return BaseResponse(error=execution.error)
+
+        process_output = execution.result
+
+        # Extract the table columns from the process output
+        columns = PatternExtractor.extract_table_columns(process_output)
+        if columns.error or not columns.result:
+            return BaseResponse(error=columns.error)
+
+        return columns
 
     @staticmethod
     def get_data_types() -> List[str]:

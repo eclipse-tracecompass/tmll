@@ -3,6 +3,7 @@ from typing import List, Union
 from types import NoneType
 
 from tmll.tsp.models.response.base import BaseResponse
+from tmll.tsp.models.response.data.table.column import TableDataColumnResponse
 from tmll.tsp.models.response.data.xy import XYDataResponse
 from tmll.tsp.models.response.output import OutputResponse
 from tmll.tsp.models.response.trace import TraceResponse
@@ -120,3 +121,34 @@ class PatternExtractor:
             return BaseResponse(result=XYDataResponse(x_values=x_values, y_values=y_values))
         except Exception as e:
             return BaseResponse(result=XYDataResponse(x_values=[], y_values=[]))
+
+    @staticmethod
+    def extract_table_columns(input: str) -> BaseResponse[List[TableDataColumnResponse]]:
+        """Extract the table columns from the input string.
+
+        Args:
+            input (str): The input string to extract the table columns from.
+
+        Returns:
+            BaseResponse[List[TableColumnResponse]]: The list of table columns.
+        """
+
+        block_pattern = re.compile(
+            r"id: (\d+)\s+"
+            r"name: ([^\n]+)\s+"
+            r"description: ([^\n]+)\s+"
+            r"type: ([^\n]+)\s*"
+            r"(.*?)",
+            re.MULTILINE
+        )
+
+        columns = []
+        for match in block_pattern.finditer(input):
+            column_id = match.group(1).strip()
+            column_name = match.group(2).strip()
+            column_description = match.group(3).strip()
+            column_type = match.group(4).strip()
+
+            columns.append(TableDataColumnResponse(id=column_id, name=column_name, description=column_description, type=column_type))
+
+        return BaseResponse(result=columns)
