@@ -1,7 +1,7 @@
 import subprocess
 
-from tmll.tsp.models.response.base import BaseResponse
-from tmll.tsp.utils.path_validator import PathValidator
+from tmll.tsp_legacy.models.response.base import BaseResponse
+from tmll.tsp_legacy.utils.path_validator import PathValidator
 
 
 class TSPService:

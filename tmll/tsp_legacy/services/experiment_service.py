@@ -1,9 +1,9 @@
 from typing import List, Optional
 
-from tmll.tsp.models.response.base import BaseResponse
-from tmll.tsp.models.response.experiment import ExperimentResponse
-from tmll.tsp.services.tsp_service import TSPService
-from tmll.tsp.utils.pattern_extractor import PatternExtractor
+from tmll.tsp_legacy.models.response.base import BaseResponse
+from tmll.tsp_legacy.models.response.experiment import ExperimentResponse
+from tmll.tsp_legacy.services.tsp_service import TSPService
+from tmll.tsp_legacy.utils.pattern_extractor import PatternExtractor
 
 
 class ExperimentService(TSPService):

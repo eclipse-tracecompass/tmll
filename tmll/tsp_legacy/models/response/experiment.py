@@ -1,6 +1,6 @@
 from typing import List
 
-from tmll.tsp.models.response.trace import TraceResponse
+from tmll.tsp_legacy.models.response.trace import TraceResponse
 
 
 class ExperimentResponse(TraceResponse):

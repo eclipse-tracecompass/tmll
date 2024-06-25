@@ -1,6 +1,6 @@
 from typing import List
 
-from tmll.tsp.models.response.data.table.row import TableDataRowResponse
+from tmll.tsp_legacy.models.response.data.table.row import TableDataRowResponse
 
 
 class TableDataResponse:

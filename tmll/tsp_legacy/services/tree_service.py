@@ -1,8 +1,8 @@
-from tmll.tsp.models.response.base import BaseResponse
-from tmll.tsp.models.response.tree.table import TableTreeResponse
-from tmll.tsp.models.response.tree.xy import XYTreeResponse
-from tmll.tsp.services.tsp_service import TSPService
-from tmll.tsp.utils.pattern_extractor import PatternExtractor
+from tmll.tsp_legacy.models.response.base import BaseResponse
+from tmll.tsp_legacy.models.response.tree.table import TableTreeResponse
+from tmll.tsp_legacy.models.response.tree.xy import XYTreeResponse
+from tmll.tsp_legacy.services.tsp_service import TSPService
+from tmll.tsp_legacy.utils.pattern_extractor import PatternExtractor
 
 AVAILABLE_TREE_TYPES = ["xy", "timegraph", "table"]
 

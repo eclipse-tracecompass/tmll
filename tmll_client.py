@@ -3,11 +3,11 @@ Trace Compass Machine Learning Library (TMLL) is a Python-based library that all
 The library is implemented as a set of Python classes that can be used to interact with Trace Compass Server Protocol (TSP) and apply machine learning techniques on the data.
 """
 
-from tmll.tsp.services.tree_service import TreeService
-from tmll.tsp.services.data_service import DataService
-from tmll.tsp.services.output_service import OutputService
-from tmll.tsp.services.experiment_service import ExperimentService
-from tmll.tsp.services.trace_service import TraceService
+from tmll.tsp_legacy.services.tree_service import TreeService
+from tmll.tsp_legacy.services.data_service import DataService
+from tmll.tsp_legacy.services.output_service import OutputService
+from tmll.tsp_legacy.services.experiment_service import ExperimentService
+from tmll.tsp_legacy.services.trace_service import TraceService
 
 TSP_CLIENT_NAME = "tsp_cli_client"
 

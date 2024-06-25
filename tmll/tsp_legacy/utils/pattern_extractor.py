@@ -2,14 +2,14 @@ import re
 from typing import List, Union
 from types import NoneType
 
-from tmll.tsp.models.response.base import BaseResponse
-from tmll.tsp.models.response.data.table.column import TableDataColumnResponse
-from tmll.tsp.models.response.data.xy import XYDataResponse
-from tmll.tsp.models.response.output import OutputResponse
-from tmll.tsp.models.response.trace import TraceResponse
-from tmll.tsp.models.response.data.xy import XYDataResponse
-from tmll.tsp.models.response.tree.node import NodeTreeResponse
-from tmll.tsp.models.response.tree.table import TableTreeResponse
+from tmll.tsp_legacy.models.response.base import BaseResponse
+from tmll.tsp_legacy.models.response.data.table.column import TableDataColumnResponse
+from tmll.tsp_legacy.models.response.data.xy import XYDataResponse
+from tmll.tsp_legacy.models.response.output import OutputResponse
+from tmll.tsp_legacy.models.response.trace import TraceResponse
+from tmll.tsp_legacy.models.response.data.xy import XYDataResponse
+from tmll.tsp_legacy.models.response.tree.node import NodeTreeResponse
+from tmll.tsp_legacy.models.response.tree.table import TableTreeResponse
 
 
 class PatternExtractor:

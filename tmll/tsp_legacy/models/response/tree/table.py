@@ -1,6 +1,6 @@
 from typing import List
 
-from tmll.tsp.models.response.tree.node import NodeTreeResponse
+from tmll.tsp_legacy.models.response.tree.node import NodeTreeResponse
 
 
 class TableTreeResponse:

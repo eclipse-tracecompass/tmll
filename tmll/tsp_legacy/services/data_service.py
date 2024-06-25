@@ -1,11 +1,11 @@
 from typing import List
 
-from tmll.tsp.models.response.base import BaseResponse
-from tmll.tsp.models.response.data.table.column import TableDataColumnResponse
-from tmll.tsp.models.response.data.table.table import TableDataResponse, TableDataRowResponse
-from tmll.tsp.models.response.data.xy import XYDataResponse
-from tmll.tsp.services.tsp_service import TSPService
-from tmll.tsp.utils.pattern_extractor import PatternExtractor
+from tmll.tsp_legacy.models.response.base import BaseResponse
+from tmll.tsp_legacy.models.response.data.table.column import TableDataColumnResponse
+from tmll.tsp_legacy.models.response.data.table.table import TableDataResponse, TableDataRowResponse
+from tmll.tsp_legacy.models.response.data.xy import XYDataResponse
+from tmll.tsp_legacy.services.tsp_service import TSPService
+from tmll.tsp_legacy.utils.pattern_extractor import PatternExtractor
 
 AVAILABLE_DATA_TYPES = ["xy", "timegraph", "table"]
 

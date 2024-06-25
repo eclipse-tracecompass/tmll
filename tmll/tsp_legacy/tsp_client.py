@@ -7,15 +7,15 @@ This module contains the TSPClient class, which is used to interact with the TSP
 
 from typing import List, Dict, Optional, Union, Tuple, Any
 
-from tmll.tsp.models.response.base import BaseResponse
-from tmll.tsp.models.response.experiment import ExperimentResponse
-from tmll.tsp.models.response.trace import TraceResponse
+from tmll.tsp_legacy.models.response.base import BaseResponse
+from tmll.tsp_legacy.models.response.experiment import ExperimentResponse
+from tmll.tsp_legacy.models.response.trace import TraceResponse
 
-from tmll.tsp.services.trace_service import TraceService
-from tmll.tsp.services.experiment_service import ExperimentService
-from tmll.tsp.services.output_service import OutputService
-from tmll.tsp.services.tree_service import TreeService
-from tmll.tsp.services.data_service import DataService
+from tmll.tsp_legacy.services.trace_service import TraceService
+from tmll.tsp_legacy.services.experiment_service import ExperimentService
+from tmll.tsp_legacy.services.output_service import OutputService
+from tmll.tsp_legacy.services.tree_service import TreeService
+from tmll.tsp_legacy.services.data_service import DataService
 
 
 class TSPClient():
