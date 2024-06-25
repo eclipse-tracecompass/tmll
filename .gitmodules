@@ -1,0 +1,4 @@
+[submodule "tmll/tsp"]
+	path = tmll/tsp
+	url = https://github.com/kavehshahedi/tsp-python-client
+	branch = get-virtual-table-lines
