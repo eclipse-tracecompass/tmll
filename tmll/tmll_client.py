@@ -6,6 +6,7 @@ import time
 
 import pandas as pd
 import numpy as np
+import requests
 
 from typing import Dict, List, Optional, Union
 
@@ -31,11 +32,19 @@ class TMLLClient:
     def __init__(self, tsp_server_host: str = "localhost", tsp_server_port: int = 8080, verbose: bool = True) -> None:
         self.tsp_client = TspClient(f"http://{tsp_server_host}:{tsp_server_port}/tsp/api/")
 
+        self.logger = Logger("TMLLClient", verbose)
+
+        # Check if the TSP server is running (i.e., check if server is reachable)
+        try:
+            response = requests.get(f"http://{tsp_server_host}:{tsp_server_port}/tsp/api/health", timeout=5)
+            if response.status_code != 200:
+                raise ConnectionError("TSP server is not running. Please start the TSP server first.")
+        except requests.exceptions.ConnectionError:
+            raise ConnectionError("TSP server is not running. Please start the TSP server first.")
+
         self.traces = []
         self.experiment = None
         self.outputs = []
-
-        self.logger = Logger("TMLLClient", verbose)
 
         """
         THESE ARE THE TEMPORARY METHODS THAT WILL BE REMOVED IN THE FINAL VERSION
