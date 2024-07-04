@@ -21,6 +21,7 @@ The following methods may be used to visualize the clustering algorithms:
 Author: Kaveh Shahedi
 """
 
+from typing import Dict
 import pandas as pd
 import numpy as np
 
@@ -36,6 +37,8 @@ from tmll.ml.preprocess.outlier_remover import OutlierRemover
 from tmll.ml.preprocess.encoder import Encoder
 from tmll.ml.preprocess.feature_manipulator import FeatureManipulator
 
+from tmll.common.services.logger import Logger
+
 AVALIABLE_MODELS = ["kmeans", "dbscan", "hierarchical", "spectral"]
 
 
@@ -43,11 +46,12 @@ class Clustering:
 
     def __init__(self, dataset: pd.DataFrame, model: str = "kmeans",
                  n_clusters: int = 3, optimal_n_clusters: bool = False,
-                 categorical_features: list[str] = [], encoding_method: str = "onehot",
+                 categorical_features: list[str] = [],
+                 auto_encoding: bool = True, encoding_method: str = "onehot",
                  ignore_features: list[str] = [], keep_features: list[str] = [],
                  normalize: bool = False, normalize_method: str = "standard",
                  remove_outliers: bool = False, remove_outliers_method: str = "zscore",
-                 random_state: int = 42):
+                 random_state: int = 42, verbose=True) -> None:
 
         self.dataset = dataset
         self.model = model
@@ -56,6 +60,7 @@ class Clustering:
         self.categorical_features = categorical_features
         self.ignore_features = ignore_features
         self.keep_features = keep_features
+        self.auto_encoding = auto_encoding
         self.encoding_method = encoding_method
         self.normalize = normalize
         self.normalize_method = normalize_method
@@ -63,12 +68,14 @@ class Clustering:
         self.remove_outliers_method = remove_outliers_method
         self.random_state = random_state
 
+        self.logger = Logger(name="Clustering", verbose=verbose)
+
         # If number of clusters is less than 2, raise an error
         if self.n_clusters < 2:
             raise ValueError("The number of clusters should be greater than or equal to 2.")
 
         # If the number of features is less than the number of clusters, raise an error
-        if len(self.dataset.columns) < self.n_clusters:
+        if len(self.dataset) < self.n_clusters:
             raise ValueError("The number of features is less than the number of clusters.")
 
         # If the model is not among the available models, raise an error
@@ -77,18 +84,49 @@ class Clustering:
 
         if len(self.ignore_features) > 0:
             self.dataset = FeatureManipulator.Basic(self.dataset).remove_features(self.ignore_features)
+            self.logger.info(f"Removed the following features: {', '.join(self.ignore_features)}")
 
         if len(self.keep_features) > 0:
             self.dataset = FeatureManipulator.Basic(self.dataset).keep_features(self.keep_features)
+            self.logger.info(f"Kept the following features: {', '.join(self.keep_features)}")
 
-        if len(self.categorical_features) > 0:
-            self.dataset = Encoder(self.dataset, method=self.encoding_method).encode(self.categorical_features)
+        if len(self.categorical_features) > 0 or self.auto_encoding:
+            target_columns = self.categorical_features if len(self.categorical_features) > 0 else self.dataset.select_dtypes(include=["object"]).columns.tolist()
+            if len(target_columns) > 0:
+                self.dataset = Encoder(self.dataset, method=self.encoding_method).encode(target_columns)
+                self.logger.info(f"Encoded the following categorical features: {', '.join(target_columns)}")
 
         if normalize:
             self.dataset = Normalizer(self.dataset, method=self.normalize_method).normalize()
+            self.logger.info(f"Normalized the data using the {self.normalize_method} method.")
 
         if remove_outliers:
             self.dataset = OutlierRemover(self.dataset, method=self.remove_outliers_method).remove_outliers()
+            self.logger.info(f"Removed the outliers using the {self.remove_outliers_method} method.")
+
+        self.logger.info(f"Initiated the clustering algorithm. Model: {self.model}, Number of clusters: {self.n_clusters}")
+
+    def execute(self) -> Dict:
+        # Apply the clustering algorithm
+        self.cluster()
+
+        # Evaluate the clustering algorithm
+        silhouette, davies_bouldin, calinski_harabasz = self.evaluate()
+
+        # Get the clusters of the data
+        clusters = self.get_clusters()
+
+        # Return the results
+        return {
+            "model": self.model,
+            "n_clusters": self.n_clusters,
+            "clusters": clusters,
+            "evaluation": {
+                "silhouette": silhouette,
+                "davies_bouldin": davies_bouldin,
+                "calinski_harabasz": calinski_harabasz
+            }
+        }
 
     def __get_optimal_n_clusters(self, max_n_clusters: int = 5) -> int:
         """Get the optimal number of clusters based on the silhouette score. This is useful when the we do not know how many clusters are in the data.
@@ -112,3 +150,55 @@ class Clustering:
             silhouette_scores.append(silhouette_score(self.dataset, model.labels_))
 
         return silhouette_scores.index(max(silhouette_scores)) + 2
+
+    def cluster(self):
+        """Apply the clustering algorithm based on the model.
+        """
+
+        if self.optimal_n_clusters:
+            self.n_clusters = self.__get_optimal_n_clusters()
+            self.logger.info(f"Optimal number of clusters: {self.n_clusters}")
+
+        if self.model == "kmeans":
+            self.model_object = KMeans(n_clusters=self.n_clusters, random_state=self.random_state)
+        elif self.model == "dbscan":
+            self.model_object = DBSCAN(eps=0.5, min_samples=5)
+        elif self.model == "hierarchical":
+            self.model_object = AgglomerativeClustering(n_clusters=self.n_clusters)
+        elif self.model == "spectral":
+            self.model_object = SpectralClustering(n_clusters=self.n_clusters, random_state=self.random_state)
+        else:
+            raise ValueError(f"The model is not among the available models, which are {', '.join(AVALIABLE_MODELS)}.")
+
+        self.logger.info(f"Applying the {self.model} clustering algorithm.")
+
+        self.model_object.fit(self.dataset)
+
+    def evaluate(self):
+        """Evaluate the clustering algorithm based on the silhouette score, Davies-Bouldin index, and Calinski-Harabasz index.
+        """
+
+        if self.model_object is None:
+            raise ValueError("The model is not defined. Please define the model before evaluating it.")
+
+        silhouette = silhouette_score(self.dataset, self.model_object.labels_)
+        davies_bouldin = davies_bouldin_score(self.dataset, self.model_object.labels_)
+        calinski_harabasz = calinski_harabasz_score(self.dataset, self.model_object.labels_)
+
+        self.logger.info(
+            f"Evaluated the clustering algorithm. Silhouette Score: {silhouette}, Davies-Bouldin Index: {davies_bouldin}, Calinski-Harabasz Index: {calinski_harabasz}")
+
+        return silhouette, davies_bouldin, calinski_harabasz
+
+    def get_clusters(self) -> pd.DataFrame:
+        """Get the clusters of the data.
+
+        Returns:
+            pd.DataFrame: The clusters of the data.
+        """
+
+        # Add the clusters to the dataset
+        clusters = self.dataset.copy()
+        clusters["cluster"] = self.model_object.labels_
+
+        return clusters

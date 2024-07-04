@@ -8,3 +8,7 @@ class TableDataColumn:
 
     def __repr__(self) -> str:
         return f"TableColumn(id={self.id}, name={self.name}, description={self.description}, type={self.type})"
+
+    @classmethod
+    def from_tsp_table_column(cls, column) -> "TableDataColumn":
+        return cls(column.id, column.name, column.description, column.type)

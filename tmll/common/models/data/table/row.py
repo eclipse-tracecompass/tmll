@@ -15,3 +15,8 @@ class TableDataRow:
 
     def __repr__(self) -> str:
         return f"Row(index={self.index}, values={self.values})"
+
+    @classmethod
+    def from_tsp_row(cls, tsp_row):
+        values = [cell.content for cell in tsp_row.cells]
+        return cls(tsp_row.index, values)

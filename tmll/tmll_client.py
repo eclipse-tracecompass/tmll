@@ -1,16 +1,21 @@
 """
-Trace Compass Machine Learning Library (TMLL) is a Python-based library that allows users to apply various machine learning techniques on the analyses of Trace Compass.
-The library is implemented as a set of Python classes that can be used to interact with Trace Compass Server Protocol (TSP) and apply machine learning techniques on the data.
+Trace Server Protocol (TSP) Machine Learning Library (TMLL) is a Python-based library that allows users to apply various machine learning techniques on the analyses of TSP.
+The library is implemented as a set of Python classes that can be used to interact with Trace Server Protocol (TSP) and apply machine learning techniques on the data.
 """
 import time
 
-from typing import Dict, List, Optional
+import pandas as pd
+import numpy as np
 
+from typing import Dict, List, Optional, Union
+
+from tmll.common.models.data.table.column import TableDataColumn
+from tmll.common.models.data.table.table import TableData
 from tmll.common.models.output import Output
 from tmll.common.models.trace import Trace
 from tmll.common.models.experiment import Experiment
 from tmll.common.models.tree.tree import Tree
-from tmll.tsp.tsp import experiment
+
 from tmll.tsp.tsp.tsp_client import TspClient
 
 from tmll.ml.unsupervised.clustering import Clustering
@@ -23,7 +28,7 @@ from tmll.common.constants import TSP as TSP_CONSTANTS
 
 class TMLLClient:
 
-    def __init__(self, tsp_server_host: str, tsp_server_port: int, verbose: bool = True) -> None:
+    def __init__(self, tsp_server_host: str = "localhost", tsp_server_port: int = 8080, verbose: bool = True) -> None:
         self.tsp_client = TspClient(f"http://{tsp_server_host}:{tsp_server_port}/tsp/api/")
 
         self.traces = []
@@ -51,7 +56,7 @@ class TMLLClient:
 
     def import_traces(self, traces: List[Dict[str, str]], experiment_name: Optional[str] = None, remove_previous: bool = True, **kwargs) -> None:
         """
-        Import traces into the Trace Compass Server Protocol (TSP) server.
+        Import traces into the Trace Server Protocol (TSP) server.
 
         Steps:
             1. Open the traces
@@ -186,3 +191,111 @@ class TMLLClient:
                 "tree": tree
             })
             self.logger.info(f"Output '{output.name}' and its tree fetched successfully.")
+
+    def apply_clustering(self, with_results: bool = True, **kwargs) -> Union[None, Dict]:
+        """
+        Apply clustering on the outputs of the experiment.
+        """
+
+        # Check if the experiment is loaded
+        if self.experiment is None:
+            raise ValueError("Experiment is not loaded. Please load the experiment first.")
+
+        for output in self.outputs:
+            datasets = {}
+
+            match output["output"].type:
+                case "TREE_TIME_XY":
+                    # Prepare the parameters for the TSP server
+                    parameters = {
+                        TspClient.PARAMETERS_KEY: {
+                            TspClient.REQUESTED_ITEM_KEY: list(map(int, [node.id for node in output["tree"].nodes])),
+                            TspClient.REQUESTED_TIME_RANGE_KEY: {
+                                TspClient.REQUESTED_TIME_RANGE_START_KEY: kwargs.get("start", self.experiment.start),
+                                TspClient.REQUESTED_TIME_RANGE_END_KEY: kwargs.get("end", self.experiment.end),
+                                TspClient.REQUESTED_TIME_RANGE_NUM_TIMES_KEY: kwargs.get("num_times", 1000)
+                            }
+                        }
+                    }
+
+                    # Send a request to the TSP server to fetch the XY data
+                    data = self.tsp_client.fetch_xy(exp_uuid=self.experiment.uuid, output_id=output["output"].id, parameters=parameters)
+                    if data.status_code != 200 or data.model.model is None:
+                        raise Exception(f"Failed to fetch XY data. Error: {data.status_text}")
+
+                    for serie in data.model.model.series:
+                        # Get the x and y values from the data
+                        x, y = serie.x_values, serie.y_values
+
+                        # Create a pandas DataFrame from the data
+                        dataset = pd.DataFrame(data=np.c_[x, y], columns=["x", "y"])
+
+                        # Get the series name
+                        series_name = serie.series_name
+                        if not series_name or series_name == "":
+                            series_name = f"Series {serie.series_id}"
+
+                        # Add the dataset to the datasets dictionary
+                        datasets[serie.series_name] = dataset
+
+                case "TIME_GRAPH":
+                    self.logger.info("Time graph output is not supported yet in the library.")
+                    continue
+
+                case "TABLE":
+                    columns = self.tsp_client.fetch_virtual_table_columns(exp_uuid=self.experiment.uuid, output_id=output["output"].id)
+                    if columns.status_code != 200:
+                        raise Exception(f"Failed to fetch virtual table columns. Error: {columns.status_text}")
+                    columns = [TableDataColumn.from_tsp_table_column(column) for column in columns.model.model.columns]
+
+                    parameters = {
+                        TspClient.PARAMETERS_KEY: {
+                            TspClient.REQUESTED_TABLE_LINE_INDEX_KEY: int(kwargs.get("table_line_index", 0)),
+                            TspClient.REQUESTED_TABLE_LINE_COUNT_KEY: int(kwargs.get("table_line_count", 5000)),
+                            TspClient.REQUESTED_TABLE_LINE_COLUMN_IDS_KEY: list(map(int, kwargs.get("table_line_column_ids", []))),
+                            TspClient.REQUESTED_TABLE_LINE_SEACH_DIRECTION_KEY: kwargs.get("table_line_search_direction", "NEXT")
+                        }
+                    }
+
+                    table = self.tsp_client.fetch_virtual_table_lines(exp_uuid=self.experiment.uuid, output_id=output["output"].id, parameters=parameters)
+                    if table.status_code != 200 or table.model.model is None:
+                        raise Exception(f"Failed to fetch virtual table lines. Error: {table.status_text}")
+
+                    table = TableData.from_tsp_table(table.model.model)
+
+                    # Get the column names of the dataset
+                    column_names = [c.name for c_id in table.columns for c in columns if c.id == c_id]
+
+                    # Create an empty DataFrame
+                    dataset = pd.DataFrame(columns=column_names)
+
+                    # Iterate through the table, and add each row to the DataFrame
+                    for row in table.rows:
+                        dataset.loc[row.index] = row.values
+
+                    # Add the dataset to the datasets dictionary
+                    datasets[output["output"].name] = dataset
+                case _:
+                    raise ValueError(f"Output type '{output['output'].type}' is not supported.")
+
+            # Apply clustering on the datasets
+            for dataset_name, dataset in datasets.items():
+                # Apply clustering on the data
+                clustering = Clustering(dataset, normalize=True)
+                results = clustering.execute()
+
+                # Add the results to the output dictionary (if results do not exist, create a new dictionary)
+                if "results" not in output:
+                    output["results"] = {}
+                output["results"][dataset_name] = results
+
+                self.logger.info(f"Clustering applied on the dataset '{dataset_name}'.")
+
+        # If user has specified to return the results, return the results
+        if with_results:
+            return {
+                "experiment": self.experiment,
+                "outputs": self.outputs
+            }
+
+        return None

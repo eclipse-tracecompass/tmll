@@ -42,7 +42,7 @@ class Encoder:
         """
 
         if self.method == "onehot":
-            encoder = OneHotEncoder(sparse=False, drop="first", handle_unknown="error")
+            encoder = OneHotEncoder(drop="first", handle_unknown="ignore")
         elif self.method == "ordinal":
             encoder = OrdinalEncoder()
         else:
@@ -52,7 +52,8 @@ class Encoder:
         if len(target_features) == 0:
             self.dataset = pd.DataFrame(encoder.fit_transform(self.dataset), columns=self.dataset.columns)
         else:
-            self.dataset[target_features] = encoder.fit_transform(self.dataset[target_features])
+            for feature in target_features:
+                self.dataset[feature] = encoder.fit_transform(self.dataset[[feature]]).toarray() # type: ignore
 
         return self.dataset
 
