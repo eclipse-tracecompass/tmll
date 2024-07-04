@@ -3,4 +3,8 @@
 **/.vscode/
 **/.idea/
 
+/build/
+/dist/
+/*.egg-info/
+
 .env
