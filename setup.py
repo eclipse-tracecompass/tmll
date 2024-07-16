@@ -5,7 +5,7 @@ with open('readme.md', 'r') as f:
 
 setup(
     name='tmll',
-    version='0.0.8',
+    version='0.0.9',
     packages=find_packages(include=['tmll', 'tmll.*']),
     install_requires=['requests==2.31.0',
                       'pandas==2.1.4',

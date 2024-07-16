@@ -24,4 +24,4 @@ class Trace:
 
     @classmethod
     def from_tsp_trace(cls, tsp_trace) -> 'Trace':
-        return cls(name=tsp_trace.name, uuid=tsp_trace.UUID, path=tsp_trace.path, start=tsp_trace.start, end=tsp_trace.end, num_events=tsp_trace.number_of_events, indexing=tsp_trace.indexin_status)
+        return cls(name=tsp_trace.name, uuid=tsp_trace.UUID, path=tsp_trace.path, start=tsp_trace.start, end=tsp_trace.end, num_events=tsp_trace.number_of_events, indexing=tsp_trace.indexing_status.name)

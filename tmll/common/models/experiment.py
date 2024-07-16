@@ -27,7 +27,7 @@ class Experiment(Trace):
     @classmethod
     def from_tsp_experiment(cls, tsp_experiment) -> 'Experiment':
         traces = [Trace.from_tsp_trace(tsp_trace) for tsp_trace in tsp_experiment.traces.traces]
-        return cls(tsp_experiment.name, tsp_experiment.UUID, tsp_experiment.start, tsp_experiment.end, tsp_experiment.number_of_events, tsp_experiment.indexin_status, traces)
+        return cls(tsp_experiment.name, tsp_experiment.UUID, tsp_experiment.start, tsp_experiment.end, tsp_experiment.number_of_events, tsp_experiment.indexing_status.name, traces)
 
     def __repr__(self) -> str:
         return f"Experiment(name={self.name}, uuid={self.uuid}, start={self.start}, end={self.end}, num_events={self.num_events}, indexing={self.indexing}, traces={self.traces})"

@@ -6,7 +6,6 @@ import time
 
 import pandas as pd
 import numpy as np
-import requests
 
 from typing import Dict, List, Optional, Union
 
@@ -17,6 +16,7 @@ from tmll.common.models.trace import Trace
 from tmll.common.models.experiment import Experiment
 from tmll.common.models.tree.tree import Tree
 
+from tmll.tsp.tsp.indexing_status import IndexingStatus
 from tmll.tsp.tsp.tsp_client import TspClient
 
 from tmll.ml.unsupervised.clustering import Clustering
@@ -29,7 +29,10 @@ from tmll.common.constants import TSP as TSP_CONSTANTS
 
 class TMLLClient:
 
-    def __init__(self, tsp_server_host: str = "localhost", tsp_server_port: int = 8080, verbose: bool = True) -> None:
+    def __init__(self, tsp_server_host: str = "localhost", tsp_server_port: int = 8080,
+                 install_tsp_server: bool = True, force_install: bool = False,
+                 verbose: bool = True) -> None:
+
         base_url = f"http://{tsp_server_host}:{tsp_server_port}/tsp/api/"
         self.tsp_client = TspClient(base_url=base_url)
 
@@ -37,11 +40,28 @@ class TMLLClient:
 
         # Check if the TSP server is running (i.e., check if server is reachable)
         try:
-            response = requests.get(f"{base_url}health", timeout=5)
+            response = self.tsp_client.fetch_health()
             if response.status_code != 200:
-                raise ConnectionError("TSP server is not running. Please start the TSP server first.")
-        except requests.exceptions.ConnectionError:
-            raise ConnectionError("TSP server is not running. Please start the TSP server first.")
+                raise Exception("TSP server is not running properly. Check its health status.")
+        except Exception as e:
+            self.logger.error(f"Failed to connect to the TSP server. Error: {e}")
+
+            if not install_tsp_server:
+                raise Exception(
+                    "Failed to connect to the TSP server. Please make sure that the TSP server is running. If you want to install the TSP server, set the 'install_tsp_server' parameter to True.")
+
+            self.logger.info("TSP server is not running. Installing the TSP server.")
+            # TODO: Install the TSP server
+            # The installer is not still available. Therefore, the installation process is not implemented yet.
+            raise Exception("The TSP server installer is not available yet. Please install the TSP server manually.")
+
+            # tsp_installer = TspInstaller()
+            # tsp_installer.install()
+
+            # # Check if the TSP server is installed successfully
+            # response = self.tsp_client.fetch_health()
+            # if response.status_code != 200:
+            #     raise Exception("Failed to install the TSP server. Please check the logs for more information.")
 
         self.logger.info("Connected to the TSP server successfully.")
 
@@ -120,20 +140,19 @@ class TMLLClient:
 
         # Check the status of the experiment periodically until it is completed
         # P.S.: It's not an efficient way to check the status. However, the tsp server does not provide a way to get the status of the experiment directly.
+        self.logger.info(f"Checking the indexing status of the experiment '{experiment_name}'.")
         while (True):
-            self.logger.info(f"Checking the status of the experiment '{experiment_name}'.")
-
             status = self.tsp_client.fetch_experiment(opened_experiment.model.UUID)
             if status.status_code != 200:
                 raise Exception(f"Failed to fetch experiment. Error: {status.status_text}")
 
-            if status.model.indexin_status == "COMPLETED":
+            if status.model.indexing_status.name == IndexingStatus.COMPLETED.name:
                 self.experiment = Experiment.from_tsp_experiment(status.model)
                 self.logger.info(f"Experiment '{experiment_name}' is loaded completely.")
                 break
 
-            # Wait for 5 seconds before checking the status again
-            time.sleep(5)
+            # Wait for 1 second before checking the status again
+            time.sleep(1)
 
         # Get the outputs of the experiment
         outputs = self.tsp_client.fetch_experiment_outputs(self.experiment.uuid)
