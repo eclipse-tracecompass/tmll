@@ -30,17 +30,20 @@ from tmll.common.constants import TSP as TSP_CONSTANTS
 class TMLLClient:
 
     def __init__(self, tsp_server_host: str = "localhost", tsp_server_port: int = 8080, verbose: bool = True) -> None:
-        self.tsp_client = TspClient(f"http://{tsp_server_host}:{tsp_server_port}/tsp/api/")
+        base_url = f"http://{tsp_server_host}:{tsp_server_port}/tsp/api/"
+        self.tsp_client = TspClient(base_url=base_url)
 
         self.logger = Logger("TMLLClient", verbose)
 
         # Check if the TSP server is running (i.e., check if server is reachable)
         try:
-            response = requests.get(f"http://{tsp_server_host}:{tsp_server_port}/tsp/api/health", timeout=5)
+            response = requests.get(f"{base_url}health", timeout=5)
             if response.status_code != 200:
                 raise ConnectionError("TSP server is not running. Please start the TSP server first.")
         except requests.exceptions.ConnectionError:
             raise ConnectionError("TSP server is not running. Please start the TSP server first.")
+
+        self.logger.info("Connected to the TSP server successfully.")
 
         self.traces = []
         self.experiment = None
