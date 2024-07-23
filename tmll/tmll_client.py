@@ -19,6 +19,8 @@ from tmll.common.models.tree.tree import Tree
 from tmll.tsp.tsp.indexing_status import IndexingStatus
 from tmll.tsp.tsp.tsp_client import TspClient
 
+from tmll.services.tsp_installer import TspInstaller
+
 from tmll.ml.unsupervised.clustering import Clustering
 
 from tmll.utils.name_generator import NameGenerator
@@ -44,24 +46,20 @@ class TMLLClient:
             if response.status_code != 200:
                 raise Exception("TSP server is not running properly. Check its health status.")
         except Exception as e:
-            self.logger.error(f"Failed to connect to the TSP server. Error: {e}")
-
+            # If the TSP server is not running and the user has not specified to install the TSP server, raise an exception
             if not install_tsp_server:
                 raise Exception(
                     "Failed to connect to the TSP server. Please make sure that the TSP server is running. If you want to install the TSP server, set the 'install_tsp_server' parameter to True.")
 
-            self.logger.info("TSP server is not running. Installing the TSP server.")
-            # TODO: Install the TSP server
-            # The installer is not still available. Therefore, the installation process is not implemented yet.
-            raise Exception("The TSP server installer is not available yet. Please install the TSP server manually.")
+            self.logger.warning("TSP server is not running. Installing the TSP server.")
 
-            # tsp_installer = TspInstaller()
-            # tsp_installer.install()
+            tsp_installer = TspInstaller()
+            tsp_installer.install()
 
-            # # Check if the TSP server is installed successfully
-            # response = self.tsp_client.fetch_health()
-            # if response.status_code != 200:
-            #     raise Exception("Failed to install the TSP server. Please check the logs for more information.")
+            # Check if the TSP server is installed successfully
+            response = self.tsp_client.fetch_health()
+            if response.status_code != 200:
+                raise Exception("Failed to install the TSP server. Please check the logs for more information.")
 
         self.logger.info("Connected to the TSP server successfully.")
 

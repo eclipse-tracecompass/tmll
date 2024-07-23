@@ -6,6 +6,8 @@ Methods:
     - error: Log an error message to the console.
 """
 
+from tmll.common.utils.colors import ConsoleColors
+
 class Logger:
     def __init__(self, name: str, verbose: bool = True) -> None:
         self.name = name
@@ -13,8 +15,12 @@ class Logger:
 
     def info(self, msg: str) -> None:
         if self.verbose:
-            print(f"[INFO] {self.name}: {msg}")
+            print(f"{ConsoleColors.BOLD}{ConsoleColors.OKBLUE}[INFO]{ConsoleColors.ENDC} {ConsoleColors.OKGREEN}{self.name}:{ConsoleColors.ENDC} {msg}")
 
     def error(self, msg: str) -> None:
         if self.verbose:
-            print(f"[ERROR] {self.name}: {msg}")
+            print(f"{ConsoleColors.BOLD}{ConsoleColors.FAIL}[ERROR]{ConsoleColors.ENDC} {ConsoleColors.OKGREEN}{self.name}:{ConsoleColors.ENDC} {msg}")
+
+    def warning(self, msg: str) -> None:
+        if self.verbose:
+            print(f"{ConsoleColors.BOLD}{ConsoleColors.WARNING}[WARNING]{ConsoleColors.ENDC} {ConsoleColors.OKGREEN}{self.name}:{ConsoleColors.ENDC} {msg}")

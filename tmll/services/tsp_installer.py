@@ -16,18 +16,25 @@ W.I.P:
 import platform
 import os
 import subprocess
-import urllib.request
+import shutil
 
 from tmll.common.services.logger import Logger
 
 DOWNLOAD_URL = {
-    "Windows": "https://www.eclipse.org/downloads/download.php?file=/tracecompass.incubator/trace-server/rcp/trace-compass-server-latest-win32.win32.x86_64.tar.gz&mirror_id=1135",
-    "Linux": "https://www.eclipse.org/downloads/download.php?file=/tracecompass.incubator/trace-server/rcp/trace-compass-server-latest-linux.gtk.x86_64.tar.gz"
+    "Windows": "https://download.eclipse.org/tracecompass.incubator/trace-server/rcp/trace-compass-server-latest-win32.win32.x86_64.tar.gz",
+    "Linux": "https://download.eclipse.org/tracecompass.incubator/trace-server/rcp/trace-compass-server-latest-linux.gtk.x86_64.tar.gz"
 }
 
+"""
+The installation directory for the TSP server. The installation directory is different for each system.
+Directories:
+    - Windows: C:\\trace-server-protocol
+    - Linux: /usr/local/bin/trace-server-protocol
+    - MacOS: /usr/local/bin/trace-server-protocol
+"""
 INSTALL_DIRECTORY = {
-    "Windows": "C:\\trace-server-protocol",
-    "Linux": "/usr/local/bin/trace-server-protocol"
+    "Windows": os.path.join("C:\\", "trace-server-protocol"),
+    "Linux": os.path.join("/", "usr", "local", "bin", "trace-server-protocol")
 }
 
 
@@ -60,15 +67,21 @@ class TspInstaller:
         if not os.path.exists(os.path.join(INSTALL_DIRECTORY["Windows"], "tracecompass-server.exe")):
             # Download the TSP executable
             self.logger.info("Downloading TSP executable")
-            urllib.request.urlretrieve(DOWNLOAD_URL["Windows"], "tsp.tar.gz")
+            subprocess.run(["curl", "-o", "tsp.tar.gz", DOWNLOAD_URL["Windows"]], shell=True, capture_output=True)
 
             # Extract the TSP executable to the installation directory
             self.logger.info("Extracting TSP executable")
-            subprocess.run(["tar", "-xvf", "tsp.tar.gz", "-C", INSTALL_DIRECTORY["Windows"]], shell=True)
+            subprocess.run(["tar", "-xvf", "tsp.tar.gz", "-C", INSTALL_DIRECTORY["Windows"]], shell=True, capture_output=True)
+
+            # Move the contents of the extracted folder to the installation directory
+            self.logger.info("Moving TSP executable to the installation directory")
+            for file in os.listdir(os.path.join(INSTALL_DIRECTORY["Windows"], "trace-compass-server")):
+                shutil.move(os.path.join(INSTALL_DIRECTORY["Windows"], "trace-compass-server", file), INSTALL_DIRECTORY["Windows"])
+            os.rmdir(os.path.join(INSTALL_DIRECTORY["Windows"], "trace-compass-server"))
 
             # Remove the downloaded TSP executable
             self.logger.info("Removing downloaded TSP executable")
-            subprocess.run(["del", "tsp.tar.gz"], shell=True)
+            subprocess.run(["del", "tsp.tar.gz"], shell=True ,capture_output=True)
 
             self.logger.info("TSP installed successfully")
 
