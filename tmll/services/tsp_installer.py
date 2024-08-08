@@ -34,7 +34,8 @@ Directories:
 """
 INSTALL_DIRECTORY = {
     "Windows": os.path.join("C:\\", "trace-server-protocol"),
-    "Linux": os.path.join("/", "usr", "local", "bin", "trace-server-protocol")
+    "Linux": os.path.join("/", "usr", "local", "bin", "trace-server-protocol"),
+    "MacOS": os.path.join("/", "usr", "local", "bin", "trace-server-protocol")
 }
 
 
@@ -49,47 +50,54 @@ class TspInstaller:
         system = platform.system()
         match system:
             case "Windows":
-                self.__install_windows()
+                self.__install("Windows", "tracecompass-server.exe")
             case "Linux":
-                self.__install_linux()
+                self.__install("Linux", "tracecompass-server")
+            case "Darwin":
+                self.__install("MacOS", "tracecompass-server")
             case _:
                 self.logger.error(f"Unsupported system: {system}")
                 raise Exception(f"Unsupported system: {system}")
 
-    def __install_windows(self) -> None:
-        self.logger.info("Installing TSP on Windows")
+    def __install(self, os_name: str, executable_name: str) -> None:
+        self.logger.info(f"Installing TSP on {os_name}")
+
+        install_dir = INSTALL_DIRECTORY[os_name]
+        download_url = DOWNLOAD_URL[os_name]
 
         # Check whether the installation directory exists
-        if not os.path.exists(INSTALL_DIRECTORY["Windows"]):
-            os.makedirs(INSTALL_DIRECTORY["Windows"])
+        if not os.path.exists(install_dir):
+            os.makedirs(install_dir)
 
         # Check whether the TSP has been installed already
-        if not os.path.exists(os.path.join(INSTALL_DIRECTORY["Windows"], "tracecompass-server.exe")):
+        if not os.path.exists(os.path.join(install_dir, executable_name)):
             # Download the TSP executable
             self.logger.info("Downloading TSP executable")
-            subprocess.run(["curl", "-o", "tsp.tar.gz", DOWNLOAD_URL["Windows"]], shell=True, capture_output=True)
+            subprocess.run(["curl", "-o", "tsp.tar.gz", download_url], capture_output=True)
 
             # Extract the TSP executable to the installation directory
             self.logger.info("Extracting TSP executable")
-            subprocess.run(["tar", "-xvf", "tsp.tar.gz", "-C", INSTALL_DIRECTORY["Windows"]], shell=True, capture_output=True)
+            subprocess.run(["tar", "-xvf", "tsp.tar.gz", "-C", install_dir], capture_output=True)
 
             # Move the contents of the extracted folder to the installation directory
             self.logger.info("Moving TSP executable to the installation directory")
-            for file in os.listdir(os.path.join(INSTALL_DIRECTORY["Windows"], "trace-compass-server")):
-                shutil.move(os.path.join(INSTALL_DIRECTORY["Windows"], "trace-compass-server", file), INSTALL_DIRECTORY["Windows"])
-            os.rmdir(os.path.join(INSTALL_DIRECTORY["Windows"], "trace-compass-server"))
+            extracted_dir = os.path.join(install_dir, "trace-compass-server")
+            for file in os.listdir(extracted_dir):
+                shutil.move(os.path.join(extracted_dir, file), install_dir)
+            os.rmdir(extracted_dir)
 
             # Remove the downloaded TSP executable
             self.logger.info("Removing downloaded TSP executable")
-            subprocess.run(["del", "tsp.tar.gz"], shell=True ,capture_output=True)
+            if os_name == "Windows":
+                subprocess.run(["del", "tsp.tar.gz"], shell=True, capture_output=True)
+            else:
+                subprocess.run(["rm", "tsp.tar.gz"], capture_output=True)
 
             self.logger.info("TSP installed successfully")
 
         # Run the TSP server
         self.logger.info("Running TSP server")
-        subprocess.Popen([os.path.join(INSTALL_DIRECTORY["Windows"], "tracecompass-server.exe")], shell=True)
-
-        return
-
-    def __install_linux(self):
-        pass
+        if os_name == "Windows":
+            subprocess.Popen([os.path.join(install_dir, executable_name)], shell=True)
+        else:
+            subprocess.Popen([os.path.join(install_dir, executable_name)])
