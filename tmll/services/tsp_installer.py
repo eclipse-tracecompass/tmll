@@ -2,7 +2,7 @@
 This module provides the TSP installer class that installs the Trace Server Protocol (TSP) on the system.
 
 Classes:
-    TspInstaller: A class to install the Trace Server Protocol (TSP) on the system.
+    TSPInstaller: A class to install the Trace Server Protocol (TSP) on the system.
 
 Current (semi) supported systems:
     - Windows
@@ -22,7 +22,8 @@ from tmll.common.services.logger import Logger
 
 DOWNLOAD_URL = {
     "Windows": "https://download.eclipse.org/tracecompass.incubator/trace-server/rcp/trace-compass-server-latest-win32.win32.x86_64.tar.gz",
-    "Linux": "https://download.eclipse.org/tracecompass.incubator/trace-server/rcp/trace-compass-server-latest-linux.gtk.x86_64.tar.gz"
+    "Linux": "https://download.eclipse.org/tracecompass.incubator/trace-server/rcp/trace-compass-server-latest-linux.gtk.x86_64.tar.gz",
+    "MacOS": "https://download.eclipse.org/tracecompass.incubator/trace-server/rcp/trace-compass-server-latest-macosx.cocoa.x86_64.tar.gz"
 }
 
 """
@@ -39,9 +40,9 @@ INSTALL_DIRECTORY = {
 }
 
 
-class TspInstaller:
+class TSPInstaller:
     def __init__(self):
-        self.logger = Logger("TspInstaller")
+        self.logger = Logger("TSPInstaller")
 
         self.logger.info("Initializing TSP Installer")
 

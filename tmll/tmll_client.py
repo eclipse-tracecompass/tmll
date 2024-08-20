@@ -19,7 +19,7 @@ from tmll.common.models.tree.tree import Tree
 from tmll.tsp.tsp.indexing_status import IndexingStatus
 from tmll.tsp.tsp.tsp_client import TspClient
 
-from tmll.services.tsp_installer import TspInstaller
+from tmll.services.tsp_installer import TSPInstaller
 
 from tmll.ml.unsupervised.clustering import Clustering
 
@@ -53,7 +53,7 @@ class TMLLClient:
 
             self.logger.warning("TSP server is not running. Installing the TSP server.")
 
-            tsp_installer = TspInstaller()
+            tsp_installer = TSPInstaller()
             tsp_installer.install()
 
             # Check if the TSP server is installed successfully
