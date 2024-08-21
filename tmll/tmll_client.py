@@ -268,34 +268,51 @@ class TMLLClient:
 
                     columns = [TableDataColumn.from_tsp_table_column(column) for column in columns.model.model.columns]
 
-                    parameters = {
-                        TspClient.PARAMETERS_KEY: {
-                            TspClient.REQUESTED_TABLE_LINE_INDEX_KEY: int(kwargs.get("table_line_index", 0)),
-                            TspClient.REQUESTED_TABLE_LINE_COUNT_KEY: int(kwargs.get("table_line_count", 5000)),
-                            TspClient.REQUESTED_TABLE_LINE_COLUMN_IDS_KEY: list(map(int, kwargs.get("table_line_column_ids", []))),
-                            TspClient.REQUESTED_TABLE_LINE_SEACH_DIRECTION_KEY: kwargs.get("table_line_search_direction", "NEXT")
+                    start_index = int(kwargs.get("table_line_start_index", 0)) # Start index of the table data. Default is 0 (i.e., the first row)
+                    line_count = int(kwargs.get("table_line_count", 65536)) # 65536 is the maximum value that the TSP server accepts
+                    column_ids = list(map(int, kwargs.get("table_line_column_ids", []))) # Which columns to fetch from the table
+                    search_direction = kwargs.get("table_line_search_direction", "NEXT") # Search direction for the table data (i.e., NEXT or PREVIOUS)
+                    while True:
+                        # Prepare the parameters for the TSP server
+                        parameters = {
+                            TspClient.PARAMETERS_KEY: {
+                                TspClient.REQUESTED_TABLE_LINE_INDEX_KEY: start_index,
+                                TspClient.REQUESTED_TABLE_LINE_COUNT_KEY: line_count,
+                                TspClient.REQUESTED_TABLE_LINE_COLUMN_IDS_KEY: column_ids,
+                                TspClient.REQUESTED_TABLE_LINE_SEACH_DIRECTION_KEY: search_direction
+                            }
                         }
-                    }
 
-                    table = self.tsp_client.fetch_virtual_table_lines(exp_uuid=self.experiment.uuid, output_id=output["output"].id, parameters=parameters)
-                    if table.status_code != 200 or table.model.model is None:
-                        self.logger.error(f"Failed to fetch '{output['output'].name}' virtual table data. Error: {table.status_text}")
-                        continue
+                        # Send a request to the TSP server to fetch the virtual table data
+                        table_request = self.tsp_client.fetch_virtual_table_lines(exp_uuid=self.experiment.uuid, output_id=output["output"].id, parameters=parameters)
 
-                    table = TableData.from_tsp_table(table.model.model)
+                        # If the request is not successful or the table data is None, break the loop
+                        if table_request.status_code != 200 or table_request.model.model is None:
+                            self.logger.error(f"Failed to fetch '{output['output'].name}' virtual table data. Error: {table_request.status_text}")
+                            break
 
-                    # Get the column names of the dataset
-                    column_names = [c.name for c_id in table.columns for c in columns if c.id == c_id]
+                        # Create the table model
+                        table = TableData.from_tsp_table(table_request.model.model)
 
-                    # Create an empty DataFrame
-                    dataset = pd.DataFrame(columns=column_names)
+                        # If the DataFrame for the output is not created yet, create it
+                        if output["output"].id not in datasets:
+                            column_names = [c.name for c_id in table.columns for c in columns if c.id == c_id]
+                            datasets[output["output"].id] = pd.DataFrame(columns=column_names)
 
-                    # Iterate through the table, and add each row to the DataFrame
-                    for row in table.rows:
-                        dataset.loc[row.index] = row.values
+                        # If there are no rows in the table, break the loop since there is no more data to fetch
+                        if not table.rows:
+                            break
 
-                    # Add the dataset to the datasets dictionary
-                    datasets[output["output"].id] = dataset
+                        # Iterate through the table and add each row to the DataFrame
+                        row_data = pd.DataFrame.from_dict({row.index: row.values for row in table.rows}, orient='index')
+                        datasets[output["output"].id] = pd.concat([datasets[output["output"].id], row_data])
+
+                        # If the number of rows in the table is less than the line count, break the loop since there is no more data to fetch
+                        if len(table.rows) < line_count:
+                            break
+                        
+                        # Update the start index for the next iteration (i.e., next batch of data)
+                        start_index += line_count
                 case _:
                     self.logger.warning(f"Output type '{output['output'].type}' is not supported.")
                     continue
