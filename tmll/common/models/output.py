@@ -23,6 +23,10 @@ class Output:
     @classmethod
     def from_tsp_output(cls, tsp_output) -> 'Output':
         return cls(name=tsp_output.name, id=tsp_output.id, description=tsp_output.description, type=tsp_output.type, start=tsp_output.start, end=tsp_output.end, final=tsp_output.final)
+    
+    @classmethod
+    def from_dict(cls, output: dict) -> 'Output':
+        return cls(name=output.get("name", ""), id=output.get("id", ""), type=output.get("type", ""), description=output.get("description", ""), start=output.get("start", 0), end=output.get("end", 0), final=output.get("final", 0))
 
     def __repr__(self) -> str:
         return f"Output(name={self.name}, id={self.id}, description={self.description}, type={self.type}, start={self.start}, end={self.end}, final={self.final})"
