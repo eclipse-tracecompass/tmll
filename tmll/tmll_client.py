@@ -3,6 +3,7 @@ Trace Server Protocol (TSP) Machine Learning Library (TMLL) is a Python-based li
 The library is implemented as a set of Python classes that can be used to interact with Trace Server Protocol (TSP) and apply machine learning techniques on the data.
 """
 import time
+import re
 
 import pandas as pd
 import numpy as np
@@ -17,6 +18,7 @@ from tmll.common.models.experiment import Experiment
 from tmll.common.models.tree.tree import Tree
 
 from tmll.tsp.tsp.indexing_status import IndexingStatus
+from tmll.tsp.tsp.response import ResponseStatus
 from tmll.tsp.tsp.tsp_client import TspClient
 
 from tmll.services.tsp_installer import TSPInstaller
@@ -144,7 +146,7 @@ class TMLLClient:
             # Wait for 1 second before checking the status again
             time.sleep(1)
 
-    def fetch_outputs(self, force_reload: bool = False) -> None:
+    def fetch_outputs(self, custom_output_ids: Optional[List[str]], force_reload: bool = False) -> None:
         if self.experiment is None:
             self.logger.error("Experiment is not loaded. Please load the experiment first by calling the 'import_traces' method.")
             return
@@ -160,38 +162,48 @@ class TMLLClient:
             for output_ in outputs.model.descriptors:
                 output = Output.from_tsp_output(output_)
 
+                # Check if the custom_output_ids is specified and the output is not in the custom_output_ids
+                if custom_output_ids and output.id not in custom_output_ids:
+                    continue
+
                 # Get the trees of the outputs
                 match output.type:
                     case "TABLE" | "DATA_TREE":
-                        tree = self.tsp_client.fetch_datatree(exp_uuid=self.experiment.uuid, output_id=output.id)
-                        if tree.status_code != 200:
-                            tree = self.tsp_client.fetch_timegraph_tree(exp_uuid=self.experiment.uuid, output_id=output.id)
-                            if tree.status_code != 200:
-                                self.logger.error(f"Failed to fetch data tree. Error: {tree.status_text}")
+                        response = self.tsp_client.fetch_datatree(exp_uuid=self.experiment.uuid, output_id=output.id)
+                        if response.status_code != 200:
+                            response = self.tsp_client.fetch_timegraph_tree(exp_uuid=self.experiment.uuid, output_id=output.id)
+                            if response.status_code != 200:
+                                self.logger.error(f"Failed to fetch data tree. Error: {response.status_text}")
                                 continue
 
                     case "TIME_GRAPH":
-                        tree = self.tsp_client.fetch_timegraph_tree(exp_uuid=self.experiment.uuid, output_id=output.id)
-                        if tree.status_code != 200:
-                            self.logger.error(f"Failed to fetch time graph tree. Error: {tree.status_text}")
+                        response = self.tsp_client.fetch_timegraph_tree(exp_uuid=self.experiment.uuid, output_id=output.id)
+                        if response.status_code != 200:
+                            self.logger.error(f"Failed to fetch time graph tree. Error: {response.status_text}")
                             continue
 
                     case "TREE_TIME_XY":
-                        tree = self.tsp_client.fetch_xy_tree(exp_uuid=self.experiment.uuid, output_id=output.id)
-                        if tree.status_code != 200:
-                            self.logger.error(f"Failed to fetch XY tree. Error: {tree.status_text}")
-                            continue
+                        while True:
+                            response = self.tsp_client.fetch_xy_tree(exp_uuid=self.experiment.uuid, output_id=output.id)
+                            if response.status_code != 200:
+                                self.logger.error(f"Failed to fetch XY tree. Error: {response.status_text}")
+                                break
+                            
+                            # Wait until the model is completely fetched (i.e., status is COMPLETED)
+                            if response.model.status.name == ResponseStatus.COMPLETED.name:
+                                break
 
+                            time.sleep(1)
                     case _:
                         self.logger.warning(f"Output type '{output.type}' is not supported.")
                         continue
 
-                tree = tree.model.model
-                if tree is None:
+                model = response.model.model
+                if model is None:
                     self.logger.warning(f"Tree of the output '{output.name}' is None.")
                     continue
 
-                tree = Tree.from_tsp_tree(tree)
+                tree = Tree.from_tsp_tree(model)
 
                 self.outputs.append({
                     "output": output,
@@ -223,38 +235,56 @@ class TMLLClient:
             match output["output"].type:
                 case "TREE_TIME_XY":
                     # Prepare the parameters for the TSP server
-                    parameters = {
-                        TspClient.PARAMETERS_KEY: {
-                            TspClient.REQUESTED_ITEM_KEY: list(map(int, [node.id for node in output["tree"].nodes])),
-                            TspClient.REQUESTED_TIME_RANGE_KEY: {
-                                TspClient.REQUESTED_TIME_RANGE_START_KEY: kwargs.get("start", self.experiment.start),
-                                TspClient.REQUESTED_TIME_RANGE_END_KEY: kwargs.get("end", self.experiment.end),
-                                TspClient.REQUESTED_TIME_RANGE_NUM_TIMES_KEY: kwargs.get("num_times", 1000)
+                    item_ids = list(map(int, [node.id for node in output["tree"].nodes]))
+                    time_range_start = kwargs.get("start", self.experiment.start)
+                    time_range_end = kwargs.get("end", self.experiment.end)
+                    time_range_num_times = kwargs.get("num_times", 65536)
+
+                    while True:
+                        parameters = {
+                            TspClient.PARAMETERS_KEY: {
+                                TspClient.REQUESTED_ITEM_KEY: item_ids,
+                                TspClient.REQUESTED_TIME_RANGE_KEY: {
+                                    TspClient.REQUESTED_TIME_RANGE_START_KEY: time_range_start,
+                                    TspClient.REQUESTED_TIME_RANGE_END_KEY: time_range_end,
+                                    TspClient.REQUESTED_TIME_RANGE_NUM_TIMES_KEY: time_range_num_times
+                                }
                             }
                         }
-                    }
 
-                    # Send a request to the TSP server to fetch the XY data
-                    data = self.tsp_client.fetch_xy(exp_uuid=self.experiment.uuid, output_id=output["output"].id, parameters=parameters)
-                    if data.status_code != 200 or data.model.model is None:
-                        self.logger.error(f"Failed to fetch XY data. Error: {data.status_text}")
-                        continue
+                        # Send a request to the TSP server to fetch the XY data
+                        data = self.tsp_client.fetch_xy(exp_uuid=self.experiment.uuid, output_id=output["output"].id, parameters=parameters)
+                        if data.status_code != 200 or data.model.model is None:
+                            self.logger.error(f"Failed to fetch XY data. Error: {data.status_text}")
+                            break  # Exit the loop if there's an error
 
-                    for serie in data.model.model.series:
-                        # Get the x and y values from the data
-                        x, y = serie.x_values, serie.y_values
+                        if not data.model.model.series:
+                            break  # Exit the loop if no more data is returned
 
-                        # Create a pandas DataFrame from the data
-                        dataset = pd.DataFrame(data=np.c_[x, y], columns=["x", "y"])
+                        x, y = None, None
+                        for serie in data.model.model.series[:1]:
+                            # Get the x and y values from the data
+                            x, y = serie.x_values, serie.y_values
 
-                        # Get the series name
-                        series_name = serie.series_name
-                        if not series_name or series_name == "":
-                            series_name = f"Series {serie.series_id}"
+                            # Create a pandas DataFrame from the data
+                            dataset = pd.DataFrame(data=np.c_[x, y], columns=["x", "y"])
 
-                        # Add the dataset to the datasets dictionary
-                        datasets[output["output"].id] = datasets.get(output["output"].id, {})
-                        datasets[output["output"].id][serie.series_name] = dataset
+                            # Get the series name
+                            series_name = serie.series_name
+                            if not series_name or series_name == "":
+                                series_name = f"Series {serie.series_id}"
+
+                            # Add the dataset to the datasets dictionary
+                            datasets[output["output"].id] = datasets.get(output["output"].id, {})
+                            datasets[output["output"].id][series_name] = pd.concat([datasets[output["output"].id].get(series_name, pd.DataFrame()), dataset])
+
+                        break
+
+                        # Update the time_range_start for the next iteration
+                        if x and len(x) > 0:
+                            time_range_start = x[-1] + 1  # Start from the next timestamp after the last received
+                        else:
+                            break  # Exit if no data was received in this iteration
 
                 case "TIME_GRAPH":
                     self.logger.warning("Time graph output is not supported yet in the library.")
@@ -267,6 +297,9 @@ class TMLLClient:
                         continue
 
                     columns = [TableDataColumn.from_tsp_table_column(column) for column in columns.model.model.columns]
+
+                    # We keep the initial columns to use them in the DataFrame creation
+                    initial_table_columns = []
 
                     start_index = int(kwargs.get("table_line_start_index", 0)) # Start index of the table data. Default is 0 (i.e., the first row)
                     line_count = int(kwargs.get("table_line_count", 65536)) # 65536 is the maximum value that the TSP server accepts
@@ -296,15 +329,26 @@ class TMLLClient:
 
                         # If the DataFrame for the output is not created yet, create it
                         if output["output"].id not in datasets:
-                            column_names = [c.name for c_id in table.columns for c in columns if c.id == c_id]
-                            datasets[output["output"].id] = pd.DataFrame(columns=column_names)
+                            initial_table_columns = [c.name for c_id in table.columns for c in columns if c.id == c_id]
+                            if not initial_table_columns:
+                                initial_table_columns = [f"Column {c}" for c in table.columns]
+
+                            datasets[output["output"].id] = pd.DataFrame(columns=initial_table_columns)
 
                         # If there are no rows in the table, break the loop since there is no more data to fetch
                         if not table.rows:
                             break
 
-                        # Iterate through the table and add each row to the DataFrame
-                        row_data = pd.DataFrame.from_dict({row.index: row.values for row in table.rows}, orient='index')
+                        # Convert the table rows to a DataFrame
+                        row_data = pd.DataFrame.from_dict({row.index: row.values for row in table.rows}, orient='index', columns=initial_table_columns)
+
+                        # If the 'separate_columns' parameter is True, extract the features from the columns
+                        # For example, if the column contains "key=value" pairs, extract the key and value as separate columns
+                        separate_columns = kwargs.get("separate_columns", False)
+                        if separate_columns:
+                            row_data = self.extract_features_from_columns(row_data)
+
+                        # Concatenate the row data to the DataFrame of the output
                         datasets[output["output"].id] = pd.concat([datasets[output["output"].id], row_data])
 
                         # If the number of rows in the table is less than the line count, break the loop since there is no more data to fetch
@@ -313,6 +357,8 @@ class TMLLClient:
                         
                         # Update the start index for the next iteration (i.e., next batch of data)
                         start_index += line_count
+
+                        break
                 case _:
                     self.logger.warning(f"Output type '{output['output'].type}' is not supported.")
                     continue
@@ -322,3 +368,29 @@ class TMLLClient:
         self.logger.info("All data fetched successfully.")
 
         return datasets
+    
+    def extract_features_from_columns(self, dataframe: pd.DataFrame) -> pd.DataFrame:
+        df = dataframe.copy()
+
+        for column in df.columns:
+            new_columns = {}
+
+            for row_index, row in enumerate(df[column].astype(str).replace("\n", "").str.strip().str.split(", ")):
+                for part in row:
+                    if "=" in part:
+                        key, value = part.split("=")
+                        key = re.sub(r"[^\w\s]", "", key).strip()
+                        new_col_name = f"{column}_{key}"
+
+                        if new_col_name not in new_columns:
+                            new_columns[new_col_name] = [np.nan] * len(df)
+                        
+                        new_columns[new_col_name][row_index] = value
+                    
+            for col_name, values in new_columns.items():
+                df[col_name] = pd.Series(values, index=df.index)
+
+            if new_columns:
+                df.drop(columns=[column], inplace=True)
+
+        return df
