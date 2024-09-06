@@ -4,6 +4,7 @@ from tmll.tmll_client import TMLLClient
 from tmll.ml.internal.modules.base_module import BaseModule
 
 from tmll.ml.preprocess.normalizer import Normalizer
+from tmll.ml.preprocess.outlier_remover import OutlierRemover
 
 from tmll.common.models.output import Output
 
@@ -27,14 +28,15 @@ TARGET_OUTPUTS = [
         "type": "TREE_TIME_XY"
     }),
 ]
-
+# Seasonal analysis -> CPU Usage/ Network / File Access
+# Resources  View -> Frequency analysis for power consumption (Resources Status Data Provider, Control Flow View)
 
 class PerformanceTrend(BaseModule):
 
     def __init__(self, client: TMLLClient):
         super().__init__(client=client)
 
-    def process(self):
+    def process(self) -> None:
         self.logger.info("Starting performance trend analysis...")
 
         self.logger.info("Fetching data...")
@@ -73,63 +75,38 @@ class PerformanceTrend(BaseModule):
                 continue
 
         if not final_dataframe.empty:
-            import numpy as np
-            from matplotlib import colors as mcolors
+            from matplotlib.dates import DateFormatter
 
-            usage_metrics = ['CPU Usage', 'Memory Usage', 'Disk I/O View']
+            # Convert timestamp to datetime
+            final_dataframe['timestamp'] = pd.to_datetime(final_dataframe['timestamp'], unit='ns')
 
-            # Check if the data contains the required metrics
-            for metric_ in usage_metrics:
-                if metric_ not in final_dataframe.columns:
-                    # If the metric is not found, remove it from the list
-                    usage_metrics.remove(metric_)
+            # Set the timestamp as the index
+            final_dataframe.set_index('timestamp', inplace=True)
 
-            if not usage_metrics:
-                self.logger.warning("The data does not contain the required metrics.")
-                return
+            # Resample the data to 1ms intervals and fill missing values with 0
+            final_dataframe = final_dataframe.resample('1ms').mean().fillna(0)
 
-            normalizer = Normalizer(final_dataframe, method='minmax')
-            final_dataframe = normalizer.normalize(target_features=usage_metrics)
-            time_ns = np.array(final_dataframe['timestamp'])
-            time_sec = (time_ns - time_ns[0]) / 1e9
+            # Remove outliers
+            outlier_remover = OutlierRemover(dataset=final_dataframe)
+            final_dataframe = outlier_remover.remove_outliers()
 
-            time_interval = 0.01  # 100 ms in seconds
-            num_cells = 1000  # 100 cells representing 100 ms within each time_interval
+            # Normalize the data (except for the timestamp column)
+            normalizer = Normalizer(dataset=final_dataframe, method='minmax')
+            final_dataframe = normalizer.normalize()
 
-            # Determine the total duration
-            total_duration = time_sec[-1]
+            # Combined plot for all metrics
+            _, ax = plt.subplots(figsize=(15, 3))
+            for column in final_dataframe.columns:
+                ax.plot(final_dataframe.index, final_dataframe[column], label=column)
 
-            # Create a 3D array for the plot (metrics x cells x time points)
-            num_time_points = int(np.ceil(total_duration / time_interval))
-            heatmap_data = np.zeros((len(usage_metrics), num_cells, num_time_points))
+            ax.set_title('Combined System Metrics Over Time')
+            ax.set_xlabel('Time')
+            ax.set_ylabel('Normalized Usage')
+            ax.legend()
 
-            for metric_index, metric in enumerate(usage_metrics):
-                usage_values = np.array(final_dataframe[metric])
-                for i, t in enumerate(time_sec):
-                    time_index = int(t / time_interval)
-                    cell_index = int((t % time_interval) / (time_interval / num_cells))
-                    
-                    if time_index < num_time_points and cell_index < num_cells:
-                        if heatmap_data[metric_index, cell_index, time_index] == 0:
-                            heatmap_data[metric_index, cell_index, time_index] = usage_values[i]
-                        else:
-                            heatmap_data[metric_index, cell_index, time_index] = (heatmap_data[metric_index, cell_index, time_index] + usage_values[i]) / 2
-
-            fig, axes = plt.subplots(len(usage_metrics), 1, figsize=(12, 5*len(usage_metrics)), sharex=True)
-            fig.suptitle('Stacked Heatmap: CPU, Memory, and Disk Usage Over Time', fontsize=16)
-
-            for i, (ax, metric) in enumerate(zip(axes, usage_metrics)):
-                norm = mcolors.TwoSlopeNorm(vmin=np.min(heatmap_data[i]), 
-                                            vcenter=np.mean(heatmap_data[i]), 
-                                            vmax=np.max(heatmap_data[i]))
-                im = ax.imshow(heatmap_data[i], aspect='auto', cmap='gray_r', norm=norm)
-                ax.set_ylabel(f'{metric}\nMilliseconds\nwithin each 10ms')
-                fig.colorbar(im, ax=ax, label=metric)
-                
-                if i == len(usage_metrics) - 1:  # Only set xlabel for the bottom subplot
-                    ax.set_xlabel('Time (s)')
-                
-                ax.grid(True)
+            # Format x-axis to show readable dates
+            ax.xaxis.set_major_formatter(DateFormatter('%S.%f'))
+            plt.xticks(rotation=45)
 
             plt.tight_layout()
             plt.show()
