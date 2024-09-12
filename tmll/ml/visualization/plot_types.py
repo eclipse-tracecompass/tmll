@@ -21,15 +21,17 @@ class TimeSeriesPlot(PlotStrategy):
             data (Any): The time series data to plot.
 
         Keyword Args:
-            x (str): The name of the x-axis column.
+            x (str): The name of the x-axis column. Default is 'timestamp'.
             y (str): The name of the y-axis column.
-            hue (str): The name of the hue column.
+            hue (str): The name of the hue column. Default is None.
+            color (str): The color of the plot. Default is 'blue'.
         """
 
         x = kwargs.get('x', 'timestamp')
         y = kwargs.get('y')
-        hue = kwargs.get('hue')
-        sns.lineplot(data=data, x=x, y=y, hue=hue, ax=ax)
+        hue = kwargs.get('hue', None)
+        color = kwargs.get('color', 'blue')
+        sns.lineplot(data=data, x=x, y=y, hue=hue, ax=ax, color=color)
         self.set_title_and_labels(ax, f"Time Series of {y}", str(x), str(y))
 
 class ScatterPlot(PlotStrategy):
@@ -48,13 +50,15 @@ class ScatterPlot(PlotStrategy):
         Keyword Args:
             x (str): The name of the x-axis column.
             y (str): The name of the y-axis column.
-            hue (str): The name of the hue column.
+            hue (str): The name of the hue column. Default is None.
+            color (str): The color of the plot. Default is 'blue'.
         """
 
         x = kwargs.get('x')
         y = kwargs.get('y')
-        hue = kwargs.get('hue')
-        sns.scatterplot(data=data, x=x, y=y, hue=hue, ax=ax)
+        hue = kwargs.get('hue', None)
+        color = kwargs.get('color', 'blue')
+        sns.scatterplot(data=data, x=x, y=y, ax=ax, color=color, hue=hue)
         self.set_title_and_labels(ax, f"Scatter Plot of {y} vs {x}",str(x), str(y))
 
 class HistogramPlot(PlotStrategy):
@@ -72,14 +76,16 @@ class HistogramPlot(PlotStrategy):
 
         Keyword Args:
             column (str): The name of the column to plot.
-            bins (int): The number of bins for the histogram.
+            color (str): The color of the plot. Default is 'blue'.
+            bins (int): The number of bins for the histogram. Default is 50.
         """
 
         column = kwargs.get('column')
+        color = kwargs.get('color', 'blue')
         bins = kwargs.get('bins', 50)
         if isinstance(bins, dict):
             bins = bins.get('bins', 50)
-        sns.histplot(data=data, x=column, bins=bins, ax=ax, kde=True)
+        sns.histplot(data=data, x=column, bins=bins, ax=ax, kde=True, color=color)
         self.set_title_and_labels(ax, f"Histogram of {column}", str(column), "Frequency")
 
 class BoxPlot(PlotStrategy):
@@ -98,11 +104,13 @@ class BoxPlot(PlotStrategy):
         Keyword Args:
             x (str): The name of the x-axis column.
             y (str): The name of the y-axis column.
+            color (str): The color of the plot. Default is 'blue'.
         """
 
         x = kwargs.get('x')
         y = kwargs.get('y')
-        sns.boxplot(data=data, x=x, y=y, ax=ax)
+        color = kwargs.get('color', 'blue')
+        sns.boxplot(data=data, x=x, y=y, ax=ax, color=color)
         self.set_title_and_labels(ax, f"Box Plot of {y} by {x}", str(x), str(y))
 
 class ViolinPlot(PlotStrategy):
@@ -121,11 +129,13 @@ class ViolinPlot(PlotStrategy):
         Keyword Args:
             x (str): The name of the x-axis column.
             y (str): The name of the y-axis column.
+            color (str): The color of the plot. Default is 'blue'.
         """
 
         x = kwargs.get('x')
         y = kwargs.get('y')
-        sns.violinplot(data=data, x=x, y=y, ax=ax)
+        color = kwargs.get('color', 'blue')
+        sns.violinplot(data=data, x=x, y=y, ax=ax, color=color)
         self.set_title_and_labels(ax, f"Violin Plot of {y} by {x}", str(x), str(y))
 
 class HeatmapPlot(PlotStrategy):
@@ -140,9 +150,17 @@ class HeatmapPlot(PlotStrategy):
         Args:
             ax (Axes): The axes to plot the data.
             data (Any): The data to plot.
+
+        Keyword Args:
+            cmap (str): The name of the colormap. Default is 'viridis'.
+            annot (bool): Whether to annotate the heatmap. Default is True.
+            fmt (str): The format of the annotation. Default is '.2f'.
         """
 
-        sns.heatmap(data, ax=ax, cmap='viridis', annot=True, fmt='.2f')
+        cmap = kwargs.get('cmap', 'viridis')
+        annot = kwargs.get('annot', True)
+        fmt = kwargs.get('fmt', '.2f')
+        sns.heatmap(data, ax=ax, cmap=cmap, annot=annot, fmt=fmt)
         self.set_title_and_labels(ax, "Correlation Heatmap", "", "")
 
 class PairPlot(PlotStrategy):
@@ -184,11 +202,13 @@ class BarPlot(PlotStrategy):
         Keyword Args:
             x (str): The name of the x-axis column.
             y (str): The name of the y-axis column.
-            hue (str): The name of the hue column.
+            hue (str): The name of the hue column. Default is None.
+            color (str): The color of the plot. Default is 'blue'.
         """
 
         x = kwargs.get('x')
         y = kwargs.get('y')
-        hue = kwargs.get('hue')
-        sns.barplot(data=data, x=x, y=y, hue=hue, ax=ax)
+        hue = kwargs.get('hue', None)
+        color = kwargs.get('color', 'blue')
+        sns.barplot(data=data, x=x, y=y, hue=hue, ax=ax, color=color)
         self.set_title_and_labels(ax, f"Bar Plot of {y} by {x}", str(x), str(y))
