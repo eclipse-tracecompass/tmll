@@ -1,7 +1,7 @@
 import pandas as pd
 
 from tmll.tmll_client import TMLLClient
-from tmll.ml.internal.modules.base_module import BaseModule
+from tmll.ml.modules.base_module import BaseModule
 
 from tmll.ml.preprocess.normalizer import Normalizer
 from tmll.ml.preprocess.outlier_remover import OutlierRemover
