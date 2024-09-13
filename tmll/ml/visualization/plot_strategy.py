@@ -16,9 +16,12 @@ class PlotStrategy(ABC):
         An abstract method to plot the data on the given axes.
         Each plot strategy will implement this method based on the corresponding plot type.
 
-        Args:
-            ax (Axes): The axes to plot the data.
-            data (Any): The data to plot.
+        :param ax: The axes to plot the data
+        :type ax: Axes
+        :param data: The data to plot
+        :type data: Any
+        :param kwargs: Additional keyword arguments for the plot
+        :return: None
         """
         pass
 
@@ -27,11 +30,15 @@ class PlotStrategy(ABC):
         """
         Set the title and labels for the given axes.
 
-        Args:
-            ax (Axes): The axes to set the title and labels.
-            title (str): Title of the plot.
-            xlabel (str): Label for the x-axis.
-            ylabel (str): Label for the y-axis.
+        :param ax: The axes to set the title and labels
+        :type ax: Axes
+        :param title: Title of the plot
+        :type title: str
+        :param xlabel: Label for the x-axis
+        :type xlabel: str
+        :param ylabel: Label for the y-axis
+        :type ylabel: str
+        :return: None
         """
 
         ax.set_title(title)

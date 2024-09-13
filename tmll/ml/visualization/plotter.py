@@ -12,14 +12,17 @@ class Plotter:
     """
 
     @staticmethod
-    def plot(data, plot_configs: List[Dict[str, Any]], figsize: Tuple[int, int] = (15, 10)) -> None:
+    def plot(data: Any, plot_configs: List[Dict[str, Any]], figsize: Tuple[int, int] = (15, 10)) -> None:
         """
         Plot the data based on the given plot configurations.
 
-        Args:
-            data: The data to plot.
-            plot_configs: A list of dictionaries containing the plot configurations.
-            figsize: The size of the figure to display the plots. Default is (15, 10).
+        :param data: The data to plot
+        :type data: Any
+        :param plot_configs: A list of dictionaries containing the plot configurations
+        :type plot_configs: List[Dict[str, Any]]
+        :param figsize: The size of the figure to display the plots
+        :type figsize: Tuple[int, int]
+        :return: None
         """
 
         num_plots = len(plot_configs)

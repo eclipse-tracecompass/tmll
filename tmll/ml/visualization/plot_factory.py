@@ -12,11 +12,10 @@ class PlotFactory:
         """
         Create a plot strategy based on the plot type.
 
-        Args:
-            plot_type (str): The type of plot to create.
-
-        Returns:
-            PlotStrategy: The plot strategy based on the plot type.
+        :param plot_type: The type of plot to create
+        :type plot_type: str
+        :return: The plot strategy based on the plot type
+        :rtype: PlotStrategy
         """
 
         plot_types = {
