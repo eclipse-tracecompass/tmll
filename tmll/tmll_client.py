@@ -278,11 +278,13 @@ class TMLLClient:
                             datasets[output["output"].id] = datasets.get(output["output"].id, {})
                             datasets[output["output"].id][series_name] = pd.concat([datasets[output["output"].id].get(series_name, pd.DataFrame()), dataset])
 
-                        break
-
                         # Update the time_range_start for the next iteration
                         if x and len(x) > 0:
                             time_range_start = x[-1] + 1  # Start from the next timestamp after the last received
+
+                            # Check if the time_range_start is greater than the time_range_end
+                            if time_range_start > time_range_end:
+                                break
                         else:
                             break  # Exit if no data was received in this iteration
 
