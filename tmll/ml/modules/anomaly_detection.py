@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 from scipy import stats
 from typing import List, Literal, Optional
 
@@ -148,6 +147,18 @@ class AnomalyDetection(BaseModule):
         }
         return method_map.get(detection_method)
 
+    def _remove_minimum(self, data: pd.Series) -> pd.Series:
+        """
+        Remove the minimum value from the data.
+
+        :param data: The data series to process
+        :type data: pd.Series
+        :return: The data series with the minimum value removed
+        :rtype: pd.Series
+        """
+        min_value = data.min()
+        return data[data > min_value]
+
     def _detect_anomalies_zscore(self, column: str, **kwargs) -> pd.DataFrame:
         """
         Detect anomalies using the Z-score method.
@@ -161,8 +172,10 @@ class AnomalyDetection(BaseModule):
         """
 
         threshold = kwargs.get('zscore_threshold', 4)
-        z_scores = np.abs(stats.zscore(self.dataframe[column]))
-        return self.dataframe[z_scores > threshold][['timestamp', column]]
+        data = self._remove_minimum(self.dataframe[column])
+        z_scores = stats.zscore(data)
+        anomalies = data[z_scores > threshold]  # Only consider upper bound
+        return self.dataframe[self.dataframe[column].isin(anomalies)][['timestamp', column]]
 
     def _detect_anomalies_iqr(self, column: str, **kwargs) -> pd.DataFrame:
         """
@@ -176,12 +189,14 @@ class AnomalyDetection(BaseModule):
         :rtype: pd.DataFrame
         """
 
-        Q1 = self.dataframe[column].quantile(0.25)
-        Q3 = self.dataframe[column].quantile(0.75)
+        data = self._remove_minimum(self.dataframe[column])
+        Q1 = data.quantile(0.25)
+        Q3 = data.quantile(0.75)
         IQR = Q3 - Q1
         lower_bound = Q1 - 1.5 * IQR
         upper_bound = Q3 + 1.5 * IQR
-        return self.dataframe[(self.dataframe[column] < lower_bound) | (self.dataframe[column] > upper_bound)][['timestamp', column]]
+        anomalies = data[data > upper_bound]  # Only consider upper bound
+        return self.dataframe[self.dataframe[column].isin(anomalies)][['timestamp', column]]
 
     def _detect_anomalies_moving_average(self, column: str, **kwargs) -> pd.DataFrame:
         """
@@ -197,12 +212,14 @@ class AnomalyDetection(BaseModule):
 
         window_size = kwargs.get('moving_average_window_size', 10)
         threshold = kwargs.get('moving_average_threshold', 0.1)
-        moving_avg = self.dataframe[column].rolling(window=window_size).mean()
-        return self.dataframe[np.abs(self.dataframe[column] - moving_avg) > threshold][['timestamp', column]]
+        data = self._remove_minimum(self.dataframe[column])
+        moving_avg = data.rolling(window=window_size).mean()
+        anomalies = data[data - moving_avg > threshold]  # Only consider upper bound
+        return self.dataframe[self.dataframe[column].isin(anomalies)][['timestamp', column]]
 
     def _detect_anomalies_combined(self, column: str, methods: Optional[List[str]] = None, **kwargs) -> pd.DataFrame:
         """
-        Detect anomalies by combining multiple detection methods dynamically.
+        Detect anomalies by combining multiple detection methods using an intersection of anomalies.
         
         :param column: The column to detect anomalies on
         :type column: str
