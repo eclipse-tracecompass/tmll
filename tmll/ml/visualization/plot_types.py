@@ -26,13 +26,27 @@ class TimeSeriesPlot(PlotStrategy):
         :type hue: str, optional
         :param color: The color of the plot. Default is 'blue'.
         :type color: str, optional
+        :param label: The label for the plot legend. Default is None.
+        :type label: str, optional
+        :param alpha: The transparency of the plot. Default is 1.0.
+        :type alpha: float, optional
+        :param is_top: Whether to place this plot on top of others. Default is False.
+        :type is_top: bool, optional
         :return: None
         """
+        label = kwargs.get('label', None)
         x = kwargs.get('x', 'timestamp')
         y = kwargs.get('y')
         hue = kwargs.get('hue', None)
         color = kwargs.get('color', 'blue')
-        sns.lineplot(data=data, x=x, y=y, hue=hue, ax=ax, color=color)
+        alpha = kwargs.get('alpha', 1.0)
+        is_top = kwargs.get('is_top', False)
+        
+        zorder = 0
+        if is_top:
+            zorder = max([line.get_zorder() for line in ax.lines]) + 1
+        
+        sns.lineplot(data=data, x=x, y=y, hue=hue, ax=ax, color=color, alpha=alpha, label=label, zorder=zorder)
         self.set_title_and_labels(ax, f"Time Series of {y}", str(x), str(y))
 
 
@@ -55,13 +69,27 @@ class ScatterPlot(PlotStrategy):
         :type hue: str, optional
         :param color: The color of the plot. Default is 'blue'.
         :type color: str, optional
+        :param label: The label for the plot legend. Default is None.
+        :type label: str, optional
+        :param alpha: The transparency of the plot. Default is 1.0.
+        :type alpha: float, optional
+        :param is_top: Whether to place this plot on top of others. Default is False.
+        :type is_top: bool, optional
         :return: None
         """
         x = kwargs.get('x')
         y = kwargs.get('y')
         hue = kwargs.get('hue', None)
         color = kwargs.get('color', 'blue')
-        sns.scatterplot(data=data, x=x, y=y, ax=ax, color=color, hue=hue)
+        label = kwargs.get('label', None)
+        alpha = kwargs.get('alpha', 1.0)
+        is_top = kwargs.get('is_top', False)
+        
+        zorder = 0
+        if is_top:
+            zorder = max([scatter.get_zorder() for scatter in ax.collections]) + 1
+        
+        sns.scatterplot(data=data, x=x, y=y, ax=ax, color=color, hue=hue, label=label, alpha=alpha, zorder=zorder)
         self.set_title_and_labels(ax, f"Scatter Plot of {y} vs {x}", str(x), str(y))
 
 
@@ -82,14 +110,29 @@ class HistogramPlot(PlotStrategy):
         :type color: str, optional
         :param bins: The number of bins for the histogram. Default is 50.
         :type bins: int, optional
+        :param label: The label for the plot legend. Default is None.
+        :type label: str, optional
+        :param alpha: The transparency of the plot. Default is 1.0.
+        :type alpha: float, optional
+        :param is_top: Whether to place this plot on top of others. Default is False.
+        :type is_top: bool, optional
         :return: None
         """
         column = kwargs.get('column')
         color = kwargs.get('color', 'blue')
         bins = kwargs.get('bins', 50)
+        label = kwargs.get('label', None)
+        alpha = kwargs.get('alpha', 1.0)
+        is_top = kwargs.get('is_top', False)
+        
         if isinstance(bins, dict):
             bins = bins.get('bins', 50)
-        sns.histplot(data=data, x=column, bins=bins, ax=ax, kde=True, color=color)
+        
+        zorder = 0
+        if is_top:
+            zorder = max([patch.get_zorder() for patch in ax.patches]) + 1
+        
+        sns.histplot(data=data, x=column, bins=bins, ax=ax, kde=True, color=color, label=label, alpha=alpha, zorder=zorder)
         self.set_title_and_labels(ax, f"Histogram of {column}", str(column), "Frequency")
 
 
@@ -110,12 +153,26 @@ class BoxPlot(PlotStrategy):
         :type y: str
         :param color: The color of the plot. Default is 'blue'.
         :type color: str, optional
+        :param label: The label for the plot legend. Default is None.
+        :type label: str, optional
+        :param alpha: The transparency of the plot. Default is 1.0.
+        :type alpha: float, optional
+        :param is_top: Whether to place this plot on top of others. Default is False.
+        :type is_top: bool, optional
         :return: None
         """
         x = kwargs.get('x')
         y = kwargs.get('y')
         color = kwargs.get('color', 'blue')
-        sns.boxplot(data=data, x=x, y=y, ax=ax, color=color)
+        label = kwargs.get('label', None)
+        alpha = kwargs.get('alpha', 1.0)
+        is_top = kwargs.get('is_top', False)
+        
+        zorder = 0
+        if is_top:
+            zorder = max([patch.get_zorder() for patch in ax.patches]) + 1
+        
+        sns.boxplot(data=data, x=x, y=y, ax=ax, color=color, label=label, alpha=alpha, zorder=zorder)
         self.set_title_and_labels(ax, f"Box Plot of {y} by {x}", str(x), str(y))
 
 
@@ -136,12 +193,26 @@ class ViolinPlot(PlotStrategy):
         :type y: str
         :param color: The color of the plot. Default is 'blue'.
         :type color: str, optional
+        :param label: The label for the plot legend. Default is None.
+        :type label: str, optional
+        :param alpha: The transparency of the plot. Default is 1.0.
+        :type alpha: float, optional
+        :param is_top: Whether to place this plot on top of others. Default is False.
+        :type is_top: bool, optional
         :return: None
         """
         x = kwargs.get('x')
         y = kwargs.get('y')
         color = kwargs.get('color', 'blue')
-        sns.violinplot(data=data, x=x, y=y, ax=ax, color=color)
+        label = kwargs.get('label', None)
+        alpha = kwargs.get('alpha', 1.0)
+        is_top = kwargs.get('is_top', False)
+        
+        zorder = 0
+        if is_top:
+            zorder = max([collection.get_zorder() for collection in ax.collections]) + 1
+        
+        sns.violinplot(data=data, x=x, y=y, ax=ax, color=color, label=label, alpha=alpha, zorder=zorder)
         self.set_title_and_labels(ax, f"Violin Plot of {y} by {x}", str(x), str(y))
 
 
@@ -162,12 +233,28 @@ class HeatmapPlot(PlotStrategy):
         :type annot: bool, optional
         :param fmt: The format of the annotation. Default is '.2f'.
         :type fmt: str, optional
+        :param label: The label for the plot legend. Default is None.
+        :type label: str, optional
+        :param alpha: The transparency of the plot. Default is 1.0.
+        :type alpha: float, optional
+        :param is_top: Whether to place this plot on top of others. Default is False.
+        :type is_top: bool, optional
         :return: None
         """
         cmap = kwargs.get('cmap', 'viridis')
         annot = kwargs.get('annot', True)
         fmt = kwargs.get('fmt', '.2f')
-        sns.heatmap(data, ax=ax, cmap=cmap, annot=annot, fmt=fmt)
+        label = kwargs.get('label', None)
+        alpha = kwargs.get('alpha', 1.0)
+        is_top = kwargs.get('is_top', False)
+        
+        zorder = 0
+        if is_top:
+            zorder = max([im.get_zorder() for im in ax.images]) + 1
+        
+        sns.heatmap(data, ax=ax, cmap=cmap, annot=annot, fmt=fmt, alpha=alpha, zorder=zorder)
+        if label:
+            ax.collections[0].set_label(label)
         self.set_title_and_labels(ax, "Correlation Heatmap", "", "")
 
 
@@ -186,12 +273,26 @@ class PairPlot(PlotStrategy):
         :type vars: list
         :param hue: The name of the hue column.
         :type hue: str
+        :param label: The label for the plot legend. Default is None.
+        :type label: str, optional
+        :param alpha: The transparency of the plot. Default is 1.0.
+        :type alpha: float, optional
+        :param is_top: Whether to place this plot on top of others. Default is False.
+        :type is_top: bool, optional
         :return: None
         """
         vars = kwargs.get('vars')
         hue = kwargs.get('hue')
-        sns.pairplot(data=data, vars=vars, hue=str(hue))
-        plt.suptitle("Pair Plot", y=1.02)
+        label = kwargs.get('label', None)
+        alpha = kwargs.get('alpha', 1.0)
+        is_top = kwargs.get('is_top', False)
+        
+        # Note: is_top is not applicable for pairplot as it creates its own figure
+        sns.pairplot(data=data, vars=vars, hue=str(hue), plot_kws={'alpha': alpha})
+        if label:
+            plt.suptitle(label, y=1.02)
+        else:
+            plt.suptitle("Pair Plot", y=1.02)
 
 
 class BarPlot(PlotStrategy):
@@ -213,13 +314,27 @@ class BarPlot(PlotStrategy):
         :type hue: str, optional
         :param color: The color of the plot. Default is 'blue'.
         :type color: str, optional
+        :param label: The label for the plot legend. Default is None.
+        :type label: str, optional
+        :param alpha: The transparency of the plot. Default is 1.0.
+        :type alpha: float, optional
+        :param is_top: Whether to place this plot on top of others. Default is False.
+        :type is_top: bool, optional
         :return: None
         """
         x = kwargs.get('x')
         y = kwargs.get('y')
         hue = kwargs.get('hue', None)
         color = kwargs.get('color', 'blue')
-        sns.barplot(data=data, x=x, y=y, hue=hue, ax=ax, color=color)
+        label = kwargs.get('label', None)
+        alpha = kwargs.get('alpha', 1.0)
+        is_top = kwargs.get('is_top', False)
+        
+        zorder = 0
+        if is_top:
+            zorder = max([patch.get_zorder() for patch in ax.patches]) + 1
+        
+        sns.barplot(data=data, x=x, y=y, hue=hue, ax=ax, color=color, label=label, alpha=alpha, zorder=zorder)
         self.set_title_and_labels(ax, f"Bar Plot of {y} by {x}", str(x), str(y))
 
 class SpanPlot(PlotStrategy):
@@ -231,19 +346,32 @@ class SpanPlot(PlotStrategy):
 
         :param ax: The axes to plot the data.
         :type ax: Axes
+        :param data: The data to plot (not used in SpanPlot, but kept for consistency).
+        :type data: Any
         :param start: The start of the span.
-        :type start: int
+        :type start: float
         :param end: The end of the span.
-        :type end: int
+        :type end: float
         :param color: The color of the span. Default is 'blue'.
         :type color: str, optional
+        :param label: The label for the plot legend. Default is None.
+        :type label: str, optional
         :param alpha: The transparency of the span. Default is 0.5.
         :type alpha: float, optional
+        :param is_top: Whether to place this plot on top of others. Default is False.
+        :type is_top: bool, optional
         :return: None
         """
         start = kwargs.get('start', 0)
         end = kwargs.get('end', 0)
         color = kwargs.get('color', 'blue')
+        label = kwargs.get('label', None)
         alpha = kwargs.get('alpha', 0.5)
-        ax.axvspan(start, end, color=color, alpha=alpha)
+        is_top = kwargs.get('is_top', False)
+
+        zorder = 0
+        if is_top:
+            zorder = max([collection.get_zorder() for collection in ax.collections]) + 1
+
+        ax.axvspan(start, end, color=color, alpha=alpha, zorder=zorder, label=label)
         self.set_title_and_labels(ax, "Span Plot", "", "")
