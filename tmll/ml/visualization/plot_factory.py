@@ -26,7 +26,8 @@ class PlotFactory:
             'violin': ViolinPlot(),
             'heatmap': HeatmapPlot(),
             'pair': PairPlot(),
-            'bar': BarPlot()
+            'bar': BarPlot(),
+            'span': SpanPlot()
         }
 
         return plot_types.get(plot_type, TimeSeriesPlot())

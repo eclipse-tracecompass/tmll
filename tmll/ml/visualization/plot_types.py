@@ -221,3 +221,29 @@ class BarPlot(PlotStrategy):
         color = kwargs.get('color', 'blue')
         sns.barplot(data=data, x=x, y=y, hue=hue, ax=ax, color=color)
         self.set_title_and_labels(ax, f"Bar Plot of {y} by {x}", str(x), str(y))
+
+class SpanPlot(PlotStrategy):
+    """A concrete class to implement the span plot strategy."""
+
+    def plot(self, ax: Axes, data: Any, **kwargs) -> None:
+        """
+        Plot the span plot of the data on the given axes.
+
+        :param ax: The axes to plot the data.
+        :type ax: Axes
+        :param start: The start of the span.
+        :type start: int
+        :param end: The end of the span.
+        :type end: int
+        :param color: The color of the span. Default is 'blue'.
+        :type color: str, optional
+        :param alpha: The transparency of the span. Default is 0.5.
+        :type alpha: float, optional
+        :return: None
+        """
+        start = kwargs.get('start', 0)
+        end = kwargs.get('end', 0)
+        color = kwargs.get('color', 'blue')
+        alpha = kwargs.get('alpha', 0.5)
+        ax.axvspan(start, end, color=color, alpha=alpha)
+        self.set_title_and_labels(ax, "Span Plot", "", "")
