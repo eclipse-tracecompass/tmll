@@ -111,7 +111,6 @@ class TMLLClient:
             # If the name is not provided for the trace, generate a name for the trace
             if "name" not in trace:
                 trace["name"] = NameGenerator.generate_name(base=trace["path"])
-                self.logger.info(f"Generating a name for the trace: {trace['name']}")
 
             response = self.tsp_client.open_trace(name=trace["name"], path=trace["path"])
             if response.status_code != 200:

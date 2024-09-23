@@ -1,26 +1,11 @@
-from typing import Any, Dict, List, Literal, Tuple, Union
+from typing import Any, Dict, List, Tuple
 from abc import ABC, abstractmethod
 
-import pandas as pd
 import matplotlib.pyplot as plt
 
-from tmll.common.models.output import Output
 from tmll.common.services.logger import Logger
 from tmll.ml.visualization.plot_factory import PlotFactory
 from tmll.tmll_client import TMLLClient
-
-
-# Variables
-PLOT_TYPES = Literal[
-    'time_series',
-    'scatter',
-    'histogram',
-    'box',
-    'violin',
-    'heatmap',
-    'pair',
-    'bar'
-]
 
 class BaseModule(ABC):
 
@@ -34,21 +19,8 @@ class BaseModule(ABC):
         self.client = client
         
         self.logger = Logger(self.__class__.__name__)
-
-    def _fetch_data(self, outputs: List[Output]) -> Union[None, Dict[str, Union[pd.DataFrame, Dict[str, pd.DataFrame]]]]:
-        """
-        Fetch the data from the given outputs.
-
-        :param outputs: The outputs to fetch the data from
-        :type outputs: List[Output]
-        :return: The fetched data
-        :rtype: Union[None, Dict[str, Union[pd.DataFrame, Dict[str, pd.DataFrame]]]]
-        """
-        
-        self.client.fetch_outputs(custom_output_ids=[output.id for output in outputs])
-        return self.client.fetch_data(custom_output_ids=[output.id for output in outputs], separate_columns=True)
     
-    def _plot(self, plots: List[Dict[str, Any]], plot_size: Tuple[int, int] = (15, 10), **kwargs) -> None:
+    def _plot(self, plots: List[Dict[str, Any]], plot_size: Tuple[float, float] = (15, 10), **kwargs) -> None:
         """
         Plot the given plots. 
 
@@ -69,21 +41,44 @@ class BaseModule(ABC):
         :type kwargs: dict
         :return: None
         """
-
+        # Create a new figure and axis
         fig, ax = plt.subplots(figsize=plot_size)
 
+        # Set the default x-axis and y-axis limits
+        x_min, x_max = float('inf'), float('-inf')
+
+        # Plot each plot
         for plot_info in plots:
             plot_type = plot_info['plot_type']
             data = plot_info['data']
+
+            # Update the plot_info with the additional keyword arguments
+            # These parameters will be used in each plot (if required)
             kwargs.update({k: v for k, v in plot_info.items() if k not in ['plot_type', 'data']})
 
+            # Update the x-axis limits
+            if data is not None and kwargs.get('x') is not None:
+                x_min = min(x_min, data[kwargs.get('x')].min())
+                x_max = max(x_max, data[kwargs.get('x')].max())
+
+            # Create the plot
             plot_strategy = PlotFactory.create_plot(plot_type)
             plot_strategy.plot(ax, data, **kwargs)
 
-        ax.set_title(kwargs.get('title', ''))
-        ax.set_xlabel(kwargs.get('x', ''))
-        ax.set_ylabel(kwargs.get('y', ''))
+        # Set the title, x-axis label, and y-axis label of the plot
+        ax.set_title(kwargs.get('fig_title', ''))
+        ax.set_xlabel(kwargs.get('fig_xlabel', ''))
+        ax.set_ylabel(kwargs.get('fig_ylabel', ''))
 
+        # Add the legend to the plot (remove duplicates)
+        handles, labels = plt.gca().get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))   
+        ax.legend(by_label.values(), by_label.keys(), loc='upper left', bbox_to_anchor=(1.025, 1), borderaxespad=0.)
+
+        # Set the x-axis limits
+        ax.set_xlim(x_min, x_max)
+
+        # Display the plot
         plt.tight_layout()
         plt.show()
 

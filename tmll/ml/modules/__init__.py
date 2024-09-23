@@ -1,2 +1,2 @@
-from .base_module import BaseModule, PLOT_TYPES
-from .anomaly_detection import AnomalyDetection
+from .base_module import BaseModule
+from .anomaly_detection.anomaly_detection_module import AnomalyDetection
