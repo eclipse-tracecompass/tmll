@@ -38,6 +38,10 @@ class BaseModule(ABC):
             - title (str): The title of the plot
             - x (str): The name of the x-axis
             - y (str): The name of the y-axis
+            - fig_title (str): The title of the figure
+            - fig_xlabel (str): The x-axis label of the figure
+            - fig_ylabel (str): The y-axis label of the figure
+            - legend (bool): Whether to show the legend. Default is True
         :type kwargs: dict
         :return: None
         """
@@ -45,7 +49,7 @@ class BaseModule(ABC):
         fig, ax = plt.subplots(figsize=plot_size)
 
         # Set the default x-axis and y-axis limits
-        x_min, x_max = float('inf'), float('-inf')
+        x_min, x_max = None, None
 
         # Plot each plot
         for plot_info in plots:
@@ -58,8 +62,14 @@ class BaseModule(ABC):
 
             # Update the x-axis limits
             if data is not None and kwargs.get('x') is not None:
-                x_min = min(x_min, data[kwargs.get('x')].min())
-                x_max = max(x_max, data[kwargs.get('x')].max())
+                x_data = data[kwargs.get('x')]
+                curr_min = x_data.min()
+                curr_max = x_data.max()
+
+                if x_min is None or curr_min < x_min:
+                    x_min = curr_min
+                if x_max is None or curr_max > x_max:
+                    x_max = curr_max
 
             # Create the plot
             plot_strategy = PlotFactory.create_plot(plot_type)
@@ -71,12 +81,16 @@ class BaseModule(ABC):
         ax.set_ylabel(kwargs.get('fig_ylabel', ''))
 
         # Add the legend to the plot (remove duplicates)
-        handles, labels = plt.gca().get_legend_handles_labels()
-        by_label = dict(zip(labels, handles))   
-        ax.legend(by_label.values(), by_label.keys(), loc='upper left', bbox_to_anchor=(1.025, 1), borderaxespad=0.)
-
+        if kwargs.get('legend', True):
+            handles, labels = plt.gca().get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))   
+            ax.legend(by_label.values(), by_label.keys(), loc='upper left', bbox_to_anchor=(1.025, 1), borderaxespad=0.)
+        else:
+            ax.get_legend().remove()
+            
         # Set the x-axis limits
-        ax.set_xlim(x_min, x_max)
+        if x_min is not None and x_max is not None:
+            ax.set_xlim(x_min, x_max)
 
         # Display the plot
         plt.tight_layout()
