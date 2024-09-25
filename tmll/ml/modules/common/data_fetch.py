@@ -18,14 +18,18 @@ class DataFetcher:
         :return: Dictionary of processed DataFrames
         :rtype: Dict[str, pd.DataFrame]
         """
+        desired_outputs = outputs
+        if not desired_outputs:
+            desired_outputs = [o["output"] for o in self.client.outputs]
+
         self.logger.info("Fetching data...")
-        data = self._fetch_data(outputs)
+        data = self._fetch_data(desired_outputs)
         if not data:
             self.logger.error("No data fetched")
             return None
 
         final_dataframe = pd.DataFrame()
-        for output in outputs:
+        for output in desired_outputs:
             if output.id not in data:
                 self.logger.warning(f"The trace data does not contain the output {output.name}.")
                 continue
@@ -54,6 +58,6 @@ class DataFetcher:
         :return: The fetched data
         :rtype: Union[None, Dict[str, Union[pd.DataFrame, Dict[str, pd.DataFrame]]]]
         """
-        
-        self.client.fetch_outputs(custom_output_ids=[output.id for output in outputs])
-        return self.client.fetch_data(custom_output_ids=[output.id for output in outputs], separate_columns=True)
+        custom_output_ids = [output.id for output in outputs]
+        self.client.fetch_outputs(custom_output_ids=custom_output_ids)
+        return self.client.fetch_data(custom_output_ids=custom_output_ids, separate_columns=True)
