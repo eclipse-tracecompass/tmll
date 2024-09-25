@@ -375,3 +375,81 @@ class SpanPlot(PlotStrategy):
 
         ax.axvspan(start, end, color=color, alpha=alpha, zorder=zorder, label=label)
         self.set_title_and_labels(ax, "Span Plot", "", "")
+
+class VLinePlot(PlotStrategy):
+    """A concrete class to implement the vertical line plot strategy."""
+
+    def plot(self, ax: Axes, data: Any, **kwargs) -> None:
+        """
+        Plot the vertical line on the given axes.
+
+        :param ax: The axes to plot the data.
+        :type ax: Axes
+        :param data: The data to plot (not used in VLinePlot, but kept for consistency).
+        :type data: Any
+        :param x: The x-coordinate of the vertical line.
+        :type x: float
+        :param color: The color of the line. Default is 'blue'.
+        :type color: str, optional
+        :param linestyle: The line style of the line. Default is '--'.
+        :type linestyle: str, optional
+        :param label: The label for the plot legend. Default is None.
+        :type label: str, optional
+        :param alpha: The transparency of the line. Default is 1.0.
+        :type alpha: float, optional
+        :param is_top: Whether to place this plot on top of others. Default is False.
+        :type is_top: bool, optional
+        :return: None
+        """
+        x = kwargs.get('x', 0)
+        color = kwargs.get('color', 'blue')
+        linestyle = kwargs.get('linestyle', '--')
+        label = kwargs.get('label', None)
+        alpha = kwargs.get('alpha', 1.0)
+        is_top = kwargs.get('is_top', False)
+
+        zorder = 0
+        if is_top:
+            zorder = max([line.get_zorder() for line in ax.lines]) + 1
+
+        ax.axvline(x=x, color=color, alpha=alpha, zorder=zorder, label=label, linestyle=linestyle)
+        self.set_title_and_labels(ax, "Vertical Line Plot", "", "")
+
+class HLinePlot(PlotStrategy):
+    """A concrete class to implement the horizontal line plot strategy."""
+
+    def plot(self, ax: Axes, data: Any, **kwargs) -> None:
+        """
+        Plot the horizontal line on the given axes.
+
+        :param ax: The axes to plot the data.
+        :type ax: Axes
+        :param data: The data to plot (not used in HLinePlot, but kept for consistency).
+        :type data: Any
+        :param y: The y-coordinate of the horizontal line.
+        :type y: float
+        :param color: The color of the line. Default is 'blue'.
+        :type color: str, optional
+        :param linestyle: The line style of the line. Default is '--'.
+        :type linestyle: str, optional
+        :param label: The label for the plot legend. Default is None.
+        :type label: str, optional
+        :param alpha: The transparency of the line. Default is 1.0.
+        :type alpha: float, optional
+        :param is_top: Whether to place this plot on top of others. Default is False.
+        :type is_top: bool, optional
+        :return: None
+        """
+        y = kwargs.get('y', 0)
+        color = kwargs.get('color', 'blue')
+        linestyle = kwargs.get('linestyle', '--')
+        label = kwargs.get('label', None)
+        alpha = kwargs.get('alpha', 1.0)
+        is_top = kwargs.get('is_top', False)
+
+        zorder = 0
+        if is_top:
+            zorder = max([line.get_zorder() for line in ax.lines]) + 1
+
+        ax.axhline(y=y, color=color, alpha=alpha, zorder=zorder, label=label, linestyle=linestyle)
+        self.set_title_and_labels(ax, "Horizontal Line Plot", "", "")

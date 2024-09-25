@@ -27,7 +27,9 @@ class PlotFactory:
             'heatmap': HeatmapPlot(),
             'pair': PairPlot(),
             'bar': BarPlot(),
-            'span': SpanPlot()
+            'span': SpanPlot(),
+            'vline': VLinePlot(),
+            'hline': HLinePlot(),
         }
 
         return plot_types.get(plot_type, TimeSeriesPlot())
