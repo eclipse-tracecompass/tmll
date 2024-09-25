@@ -101,7 +101,7 @@ class AnomalyDetection(BaseModule):
                 self.logger.error("No data fetched")
                 return
             
-            self.dataframe = self.data_preprocessor.preprocess(data)
+            self.dataframe = self.data_preprocessor.normalize(data)
 
         self._detect_anomalies(detection_method=method, **kwargs)
 
