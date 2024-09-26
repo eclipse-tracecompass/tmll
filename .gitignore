@@ -7,4 +7,6 @@
 /dist/
 /*.egg-info/
 
+*.DS_Store
+
 .env
