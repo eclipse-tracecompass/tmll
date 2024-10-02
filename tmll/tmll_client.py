@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Union
 from tmll.common.models.data.table.column import TableDataColumn
 from tmll.common.models.data.table.table import TableData
 from tmll.common.models.output import Output
+from tmll.common.models.timegraph.timegraph import TimeGraph
 from tmll.common.models.trace import Trace
 from tmll.common.models.experiment import Experiment
 from tmll.common.models.tree.tree import Tree
@@ -168,18 +169,32 @@ class TMLLClient:
                 # Get the trees of the outputs
                 match output.type:
                     case "TABLE" | "DATA_TREE":
-                        response = self.tsp_client.fetch_datatree(exp_uuid=self.experiment.uuid, output_id=output.id)
-                        if response.status_code != 200:
-                            response = self.tsp_client.fetch_timegraph_tree(exp_uuid=self.experiment.uuid, output_id=output.id)
+                        while True:
+                            response = self.tsp_client.fetch_datatree(exp_uuid=self.experiment.uuid, output_id=output.id)
                             if response.status_code != 200:
-                                self.logger.error(f"Failed to fetch data tree. Error: {response.status_text}")
-                                continue
+                                response = self.tsp_client.fetch_timegraph_tree(exp_uuid=self.experiment.uuid, output_id=output.id)
+                                if response.status_code != 200:
+                                    self.logger.error(f"Failed to fetch data tree. Error: {response.status_text}")
+                                    break
+
+                            # Wait until the model is completely fetched (i.e., status is COMPLETED)
+                            if response.model.status.name == ResponseStatus.COMPLETED.name:
+                                break
+
+                            time.sleep(1)
 
                     case "TIME_GRAPH":
-                        response = self.tsp_client.fetch_timegraph_tree(exp_uuid=self.experiment.uuid, output_id=output.id)
-                        if response.status_code != 200:
-                            self.logger.error(f"Failed to fetch time graph tree. Error: {response.status_text}")
-                            continue
+                        while True:
+                            response = self.tsp_client.fetch_timegraph_tree(exp_uuid=self.experiment.uuid, output_id=output.id)
+                            if response.status_code != 200:
+                                self.logger.error(f"Failed to fetch time graph tree. Error: {response.status_text}")
+                                break
+                            
+                            # Wait until the model is completely fetched (i.e., status is COMPLETED)
+                            if response.model.status.name == ResponseStatus.COMPLETED.name:
+                                break
+
+                            time.sleep(1)
 
                     case "TREE_TIME_XY":
                         while True:
@@ -288,8 +303,67 @@ class TMLLClient:
                             break  # Exit if no data was received in this iteration
 
                 case "TIME_GRAPH":
-                    self.logger.warning("Time graph output is not supported yet in the library.")
-                    continue
+                    items = list(map(int, [node.id for node in output["tree"].nodes]))
+                    time_range_start = kwargs.get("start", self.experiment.start)
+                    time_range_end = kwargs.get("end", self.experiment.end)
+                    time_range_num_times = kwargs.get("num_times", 65536)
+                    strategy = kwargs.get("strategy", "DEEP")
+
+                    while True:
+                        parameters = {
+                            TspClient.PARAMETERS_KEY: {
+                                TspClient.REQUESTED_ITEM_KEY: items,
+                                TspClient.REQUESTED_TIME_RANGE_KEY: {
+                                    TspClient.REQUESTED_TIME_RANGE_START_KEY: time_range_start,
+                                    TspClient.REQUESTED_TIME_RANGE_END_KEY: time_range_end,
+                                    TspClient.REQUESTED_TIME_RANGE_NUM_TIMES_KEY: time_range_num_times
+                                },
+                                TspClient.REQUESTED_FILTER_QUERY_PARAMETERS_KEY: {
+                                    TspClient.REQUESTED_STRATEGY_KEY: strategy
+                                }
+                            }
+                        }
+
+                        # Send a request to the TSP server to fetch the time graph data
+                        data = self.tsp_client.fetch_timegraph_states(exp_uuid=self.experiment.uuid, output_id=output["output"].id, parameters=parameters)
+                        if data.status_code != 200 or data.model.model is None:
+                            self.logger.error(f"Failed to fetch time graph data. Error: {data.status_text}")
+                            break
+
+                        # Check if the time graph data is empty
+                        if not data.model.model.rows:
+                            break
+
+                        timegraph = TimeGraph.from_tsp_time_graph(data.model.model)
+
+                        # Create a pandas DataFrame from the time graph data
+                        data = []
+                        for row in timegraph.rows:
+                            for state in row.states:
+                                data.append({
+                                    "entry_id": row.entry_id,
+                                    "start_time": state.start,
+                                    "end_time": state.end,
+                                    "label": state.label
+                                })
+
+                        dataset = pd.DataFrame(data)
+
+                        # Add the dataset to the datasets dictionary
+                        if output["output"].id not in datasets:
+                            datasets[output["output"].id] = pd.DataFrame()
+                        
+                        datasets[output["output"].id] = pd.concat([datasets[output["output"].id], dataset])
+
+                        # Update the time_range_start for the next iteration
+                        if data and len(data) > 0:
+                            time_range_start = data[-1]["end_time"] + 1
+
+                            # Check if the time_range_start is greater than the time_range_end
+                            if time_range_start > time_range_end:
+                                break
+                        else:
+                            break
 
                 case "TABLE" | "DATA_TREE":
                     columns = self.tsp_client.fetch_virtual_table_columns(exp_uuid=self.experiment.uuid, output_id=output["output"].id)
