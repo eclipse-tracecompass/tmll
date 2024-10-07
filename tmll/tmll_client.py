@@ -34,6 +34,20 @@ class TMLLClient:
     def __init__(self, tsp_server_host: str = "localhost", tsp_server_port: int = 8080,
                  install_tsp_server: bool = True, force_install: bool = False,
                  verbose: bool = True) -> None:
+        """
+        Constructor for the TMLLClient class.
+
+        :param tsp_server_host: Host of the TSP server
+        :type tsp_server_host: str
+        :param tsp_server_port: Port of the TSP server
+        :type tsp_server_port: int
+        :param install_tsp_server: Flag to install the TSP server if it is not running
+        :type install_tsp_server: bool
+        :param force_install: Flag to force the installation of the TSP server
+        :type force_install: bool
+        :param verbose: Flag to enable/disable the verbose mode
+        :type verbose: bool
+        """
 
         base_url = f"http://{tsp_server_host}:{tsp_server_port}/tsp/api/"
         self.tsp_client = TspClient(base_url=base_url)
@@ -91,9 +105,12 @@ class TMLLClient:
         """
         Import traces into the Trace Server Protocol (TSP) server.
 
-        Steps:
-            1. Open the traces
-            2. Create an experiment with the opened traces
+        :param traces: List of traces to import
+        :type traces: List[Dict[str, str]]
+        :param experiment_name: Name of the experiment to create
+        :type experiment_name: str
+        :param remove_previous: Flag to remove the previous traces and experiment
+        :type remove_previous: bool
         """
 
         # Remove the previous traces and experiment if remove_previous is True
@@ -146,7 +163,16 @@ class TMLLClient:
             # Wait for 1 second before checking the status again
             time.sleep(1)
 
-    def fetch_outputs(self, custom_output_ids: Optional[List[str]], force_reload: bool = False) -> None:
+    def fetch_outputs(self, custom_output_ids: Optional[List[str]] = None, force_reload: bool = False) -> None:
+        """
+        Fetch the outputs of the experiment.
+
+        :param custom_output_ids: List of custom output IDs to fetch
+        :type custom_output_ids: Optional[List[str]]
+        :param force_reload: Flag to force reload the outputs
+        :type force_reload: bool
+        """
+        
         if self.experiment is None:
             self.logger.error("Experiment is not loaded. Please load the experiment first by calling the 'import_traces' method.")
             return
@@ -230,6 +256,17 @@ class TMLLClient:
             self.logger.info("Outputs are already fetched. If you want to force reload the outputs, set the 'force_reload' parameter to True.")
 
     def fetch_data(self, custom_output_ids: Optional[List[str]] = None, **kwargs) -> Union[None, Dict[str, Union[pd.DataFrame, Dict[str, pd.DataFrame]]]]:
+        """
+        Fetch the data for the outputs.
+
+        :param custom_output_ids: List of custom output IDs to fetch
+        :type custom_output_ids: Optional[List[str]]
+        :param kwargs: Additional parameters for fetching the data
+        :type kwargs: Dict
+        :return: Dictionary of processed DataFrames
+        :rtype: Union[None, Dict[str, Union[pd.DataFrame, Dict[str, pd.DataFrame]]]]
+        """
+        
         # Check if the experiment is loaded
         if self.experiment is None:
             self.logger.error("Experiment is not loaded. Please load the experiment first.")
@@ -318,8 +355,8 @@ class TMLLClient:
                                     TspClient.REQUESTED_TIME_RANGE_END_KEY: time_range_end,
                                     TspClient.REQUESTED_TIME_RANGE_NUM_TIMES_KEY: time_range_num_times
                                 },
-                                TspClient.REQUESTED_FILTER_QUERY_PARAMETERS_KEY: {
-                                    TspClient.REQUESTED_STRATEGY_KEY: strategy
+                                "filter_query_parameters": {
+                                    "strategy": strategy
                                 }
                             }
                         }
@@ -445,6 +482,15 @@ class TMLLClient:
         return datasets
     
     def extract_features_from_columns(self, dataframe: pd.DataFrame) -> pd.DataFrame:
+        """
+        Extract features from the columns of the DataFrame. For example, if the column contains "key=value" pairs, extract the key and value as separate columns.
+
+        :param dataframe: DataFrame to extract features from the columns
+        :type dataframe: pd.DataFrame
+        :return: DataFrame with extracted features
+        :rtype: pd.DataFrame
+        """
+        
         df = dataframe.copy()
 
         for column in df.columns:
