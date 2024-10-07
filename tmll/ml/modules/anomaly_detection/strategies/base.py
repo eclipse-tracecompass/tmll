@@ -2,7 +2,16 @@ import pandas as pd
 from typing import List, Tuple
 from abc import ABC, abstractmethod
 
+from tmll.common.services.logger import Logger
+
 class AnomalyDetectionStrategy(ABC):
+    """
+    Abstract class for anomaly detection strategies.
+    """
+
+    def __init__(self):
+        self.logger = Logger(self.__class__.__name__)
+
     @abstractmethod
     def detect_anomalies(self, data: pd.DataFrame, **kwargs) -> Tuple[pd.DataFrame, List[Tuple[pd.Timestamp, pd.Timestamp]]]:
         """
