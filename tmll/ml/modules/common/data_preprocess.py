@@ -16,8 +16,37 @@ class DataPreprocessor:
         :rtype: pd.DataFrame
         """
         normalizer = Normalizer(dataset=dataframe, method=normalization_method)
-        return normalizer.normalize(target_features=[col for col in dataframe.columns if col != 'timestamp'])
+
+        # Normalize the columns that are neither 'timestamp' nor their type is not 'float64' or 'int64'
+        target_features = []
+        for column in dataframe.columns:
+            if column != 'timestamp' and dataframe[column].dtype in ['float64', 'int64']:
+                target_features.append(column)
+
+        if not target_features:
+            return dataframe
+        
+        return normalizer.normalize(target_features)
     
+    @staticmethod
+    def convert_to_datetime(dataframe: pd.DataFrame, timestamp_column: str = 'timestamp', set_index: bool = True) -> pd.DataFrame:
+        """
+        Convert the timestamp column to a datetime format.
+
+        :param dataframe: The DataFrame to convert
+        :type dataframe: pd.DataFrame
+        :param timestamp_column: The name of the timestamp column, defaults to 'timestamp'
+        :type timestamp_column: str, optional
+        :param set_index: Whether to set the timestamp column as the index, defaults to True
+        :type set_index: bool, optional
+        :return: The DataFrame with the timestamp column converted to datetime
+        :rtype: pd.DataFrame
+        """
+        dataframe[timestamp_column] = pd.to_datetime(dataframe[timestamp_column])
+        if set_index:
+            dataframe.set_index(timestamp_column, inplace=True)
+        return dataframe
+        
     @staticmethod
     def resample(dataframe: pd.DataFrame, frequency: str = '1h') -> pd.DataFrame:
         """
