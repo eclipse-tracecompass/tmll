@@ -46,7 +46,7 @@ class BaseModule(ABC):
         :return: None
         """
         # Create a new figure and axis
-        fig, ax = plt.subplots(figsize=plot_size)
+        fig, ax = plt.subplots(figsize=plot_size, dpi=kwargs.get('dpi', 100))
 
         # Set the default x-axis and y-axis limits
         x_min, x_max = None, None
