@@ -62,11 +62,11 @@ class IsolationForestStrategy(AnomalyDetectionStrategy):
         :rtype: np.ndarray
         """
         # Convert timestamp to datetime if it's not already
-        if not pd.api.types.is_datetime64_any_dtype(df['timestamp']):
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ns')
+        if not pd.api.types.is_datetime64_any_dtype(df.index):
+            df.index = pd.to_datetime(df.index, unit='ns')
         
         # Convert timestamp to seconds from start of trace
-        df['seconds_from_start'] = (df['timestamp'] - df['timestamp'].min()).dt.total_seconds()
+        df['seconds_from_start'] = (df.index - df.index.min()).total_seconds()
         
         # Calculate rolling statistics
         for col in df.columns:
@@ -78,7 +78,4 @@ class IsolationForestStrategy(AnomalyDetectionStrategy):
         # Drop NaN values resulting from rolling calculations
         df = df.dropna()
         
-        # Prepare feature matrix
-        features = df.drop(['timestamp'], axis=1)
-        
-        return features.values
+        return df.values
