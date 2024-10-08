@@ -33,7 +33,7 @@ class TMLLClient:
 
     def __init__(self, tsp_server_host: str = "localhost", tsp_server_port: int = 8080,
                  install_tsp_server: bool = True, force_install: bool = False,
-                 verbose: bool = True) -> None:
+                 verbose: bool = True, **kwargs) -> None:
         """
         Constructor for the TMLLClient class.
 
@@ -47,6 +47,8 @@ class TMLLClient:
         :type force_install: bool
         :param verbose: Flag to enable/disable the verbose mode
         :type verbose: bool
+        :param kwargs: Additional parameters
+        :type kwargs: Dict
         """
 
         base_url = f"http://{tsp_server_host}:{tsp_server_port}/tsp/api/"
@@ -98,8 +100,9 @@ class TMLLClient:
                 # Do not also delete the trace from disk; file part of this repo.
                 self.tsp_client.delete_trace(trace.UUID, False)
 
-        _delete_experiments()
-        _delete_traces()
+        if kwargs.get("delete_all", False):
+            _delete_experiments()
+            _delete_traces()
 
     def import_traces(self, traces: List[Dict[str, str]], experiment_name: str, remove_previous: bool = False) -> None:
         """
