@@ -380,8 +380,9 @@ class TMLLClient:
                         data = []
                         for row in timegraph.rows:
                             for state in row.states:
+                                parent_id = output["tree"].get_node_parent(row.entry_id).id
                                 data.append({
-                                    "entry_id": row.entry_id,
+                                    "entry_id": parent_id,
                                     "start_time": state.start,
                                     "end_time": state.end,
                                     "label": state.label
