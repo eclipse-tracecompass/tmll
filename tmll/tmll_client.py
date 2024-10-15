@@ -456,9 +456,9 @@ class TMLLClient:
                             break
 
                         # Convert the table rows to a DataFrame
-                        row_data = pd.DataFrame.from_dict({row.index: row.values for row in table.rows}, orient='index', columns=initial_table_columns)
+                        row_data = pd.DataFrame.from_dict({row.index: row.values for row in table.rows}, orient="index", columns=initial_table_columns)
 
-                        # If the 'separate_columns' parameter is True, extract the features from the columns
+                        # If the "separate_columns" parameter is True, extract the features from the columns
                         # For example, if the column contains "key=value" pairs, extract the key and value as separate columns
                         separate_columns = kwargs.get("separate_columns", False)
                         if separate_columns:

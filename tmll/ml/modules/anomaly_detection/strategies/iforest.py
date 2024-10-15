@@ -19,14 +19,17 @@ class IsolationForestStrategy(AnomalyDetectionStrategy):
         :return: DataFrame with detected anomalies
         :rtype: pd.DataFrame
         """
-        window_size = kwargs.get('window_size', 100)
-        contamination = kwargs.get('contamination', 0.1)
-        random_state = kwargs.get('random_state', 42)
+        window_size = kwargs.get("window_size", 100)
+        contamination = kwargs.get("contamination", 0.1)
+        random_state = kwargs.get("random_state", 42)
 
         # Keep a copy of the original data
         df = data.copy()
 
         X = self._prepare_features(df, window_size)
+        if X.shape[0] == 0:
+            return pd.DataFrame(index=df.index, columns=df.columns), []
+        
         iso_forest = IsolationForest(contamination=contamination, random_state=random_state)
         anomaly_scores = -iso_forest.fit_predict(X)
 
@@ -41,12 +44,12 @@ class IsolationForestStrategy(AnomalyDetectionStrategy):
             anomalies = normalized_scores > threshold
 
         result_df = df.iloc[window_size-1:].copy()
-        result_df['anomaly_score'] = normalized_scores
+        result_df["anomaly_score"] = normalized_scores
         for column in df.columns:
-            if column != 'timestamp':
-                result_df[f'{column}_is_anomaly'] = anomalies
+            if column != "timestamp":
+                result_df[f"{column}_is_anomaly"] = anomalies
 
-        anomaly_periods = self._identify_anomaly_periods(result_df.filter(regex='_is_anomaly$'))
+        anomaly_periods = self._identify_anomaly_periods(result_df.filter(regex="_is_anomaly$"))
 
         return result_df, anomaly_periods
 
@@ -61,19 +64,19 @@ class IsolationForestStrategy(AnomalyDetectionStrategy):
         :return: Prepared feature matrix
         :rtype: np.ndarray
         """
-        # Convert timestamp to datetime if it's not already
+        # Convert timestamp to datetime if it"s not already
         if not pd.api.types.is_datetime64_any_dtype(df.index):
-            df.index = pd.to_datetime(df.index, unit='ns')
+            df.index = pd.to_datetime(df.index)
         
         # Convert timestamp to seconds from start of trace
-        df['seconds_from_start'] = (df.index - df.index.min()).total_seconds()
+        df["seconds_from_start"] = (df.index - df.index.min()).total_seconds()
         
         # Calculate rolling statistics
         for col in df.columns:
-            if col not in ['timestamp', 'seconds_from_start']:
-                df[f'{col}_rolling_mean'] = df[col].rolling(window=window_size).mean()
-                df[f'{col}_rolling_std'] = df[col].rolling(window=window_size).std()
-                df[f'{col}_rate_of_change'] = df[col].diff() / df['seconds_from_start'].diff()
+            if col not in ["timestamp", "seconds_from_start"]:
+                df[f"{col}_rolling_mean"] = df[col].rolling(window=window_size).mean()
+                df[f"{col}_rolling_std"] = df[col].rolling(window=window_size).std()
+                df[f"{col}_rate_of_change"] = df[col].diff() / df["seconds_from_start"].diff()
         
         # Drop NaN values resulting from rolling calculations
         df = df.dropna()

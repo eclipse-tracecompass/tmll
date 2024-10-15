@@ -24,20 +24,20 @@ class SeasonalityStrategy(AnomalyDetectionStrategy):
         
         # Check if data has a datetime index
         if not pd.api.types.is_datetime64_any_dtype(data.index):
-            self.logger.error('Data must have a datetime index.')
+            self.logger.error("Data must have a datetime index.")
             return pd.DataFrame(index=data.index, columns=data.columns), []
         
         resample_freq, seasonal_period = self._estimate_parameters(data)
-        if kwargs.get('resample_freq', None) is not None:
-            resample_freq = kwargs['resample_freq']
-            del kwargs['resample_freq']
-        if kwargs.get('seasonal_period', None) is not None:
-            seasonal_period = kwargs['seasonal_period']
-            del kwargs['seasonal_period']
+        if kwargs.get("resample_freq", None) is not None:
+            resample_freq = kwargs["resample_freq"]
+            del kwargs["resample_freq"]
+        if kwargs.get("seasonal_period", None) is not None:
+            seasonal_period = kwargs["seasonal_period"]
+            del kwargs["seasonal_period"]
 
         for column in data.columns:
             # Skip non-numeric columns
-            if data[column].dtype.kind in 'bifc':
+            if data[column].dtype.kind in "bifc":
                 # Remove minimum values
                 column_data = self._remove_minimum(data[[column]])
                 ts = column_data[column].dropna()
@@ -47,12 +47,12 @@ class SeasonalityStrategy(AnomalyDetectionStrategy):
                     anomalies_col, predicted_mean, conf_int = self._detect_anomalies_arima(ts, resample_freq, seasonal_period, **kwargs)
                 except Exception as e:
                     self.logger.error(f"Error detecting anomalies for column {column}: {str(e)}")
-                    anomalies_col = pd.Series(False, index=data.index, name=f'{column}_is_anomaly')
+                    anomalies_col = pd.Series(False, index=data.index, name=f"{column}_is_anomaly")
                 
                 anomalies_list.append(anomalies_col)
             else:
                 # For non-numeric columns, create a Series of False
-                anomalies_col = pd.Series(False, index=data.index, name=f'{column}_is_anomaly')
+                anomalies_col = pd.Series(False, index=data.index, name=f"{column}_is_anomaly")
                 anomalies_list.append(anomalies_col)
         
         # Combine all anomaly Series into a DataFrame
@@ -86,8 +86,8 @@ class SeasonalityStrategy(AnomalyDetectionStrategy):
             is_stationary = False
 
         # Set ARIMA parameters
-        p, d, q = kwargs.get('arima_order', (1, int(not is_stationary), 1))
-        P, D, Q = kwargs.get('seasonal_order', (1, 1, 1))
+        p, d, q = kwargs.get("arima_order", (1, int(not is_stationary), 1))
+        P, D, Q = kwargs.get("seasonal_order", (1, 1, 1))
         
         # Fit SARIMA model
         try:
@@ -97,19 +97,19 @@ class SeasonalityStrategy(AnomalyDetectionStrategy):
                 results = model.fit(disp=False, maxiter=1000)
         except Exception as e:
             self.logger.error(f"SARIMA model fitting failed: {str(e)}")
-            return pd.Series(False, index=ts.index, name=f'{ts.name}_is_anomaly'), pd.Series(), pd.DataFrame()
+            return pd.Series(False, index=ts.index, name=f"{ts.name}_is_anomaly"), pd.Series(), pd.DataFrame()
 
         # Make predictions
         predictions = results.get_prediction(start=ts.index[0], end=ts.index[-1]) # type: ignore
         predicted_mean = predictions.predicted_mean
         
         # Calculate confidence intervals
-        conf_int = predictions.conf_int(alpha=kwargs.get('confidence_level', 0.05))
+        conf_int = predictions.conf_int(alpha=kwargs.get("confidence_level", 0.05))
 
         # Detect anomalies
         anomalies = (ts < conf_int.iloc[:, 0]) | (ts > conf_int.iloc[:, 1])
         
-        return pd.Series(anomalies, index=ts.index, name=f'{ts.name}_is_anomaly'), predicted_mean, conf_int
+        return pd.Series(anomalies, index=ts.index, name=f"{ts.name}_is_anomaly"), predicted_mean, conf_int
 
     def _clean_timeseries(self, ts: pd.Series, resample_freq: str) -> pd.Series:
         """
@@ -126,7 +126,7 @@ class SeasonalityStrategy(AnomalyDetectionStrategy):
         ts = ts.asfreq(resample_freq)
         
         # Interpolate missing values
-        ts = ts.interpolate(method='time')
+        ts = ts.interpolate(method="time")
         
         # Remove any remaining NaN values at the beginning or end of the series
         ts = ts.dropna()
@@ -148,17 +148,17 @@ class SeasonalityStrategy(AnomalyDetectionStrategy):
         avg_interval = duration / total_points
         
         if avg_interval.total_seconds() < 0.001:
-            resample_freq = 'ms'
+            resample_freq = "ms"
         elif avg_interval.total_seconds() < 0.01:
-            resample_freq = '10ms'
+            resample_freq = "10ms"
         elif avg_interval.total_seconds() < 0.1:
-            resample_freq = '100ms'
+            resample_freq = "100ms"
         elif avg_interval.total_seconds() < 1:
-            resample_freq = 's'  # 1 second
+            resample_freq = "s"  # 1 second
         elif avg_interval.total_seconds() < 60:
-            resample_freq = '10s'  # 10 seconds
+            resample_freq = "10s"  # 10 seconds
         else:
-            resample_freq = '1min'  # 1 minute
+            resample_freq = "1min"  # 1 minute
         
         # Estimate seasonal period
         if duration.total_seconds() < 600:

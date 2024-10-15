@@ -17,11 +17,11 @@ class ZScoreStrategy(AnomalyDetectionStrategy):
         :return: DataFrame with detected anomalies
         :rtype: pd.DataFrame
         """
-        threshold = kwargs.get('zscore_threshold', 3)
+        threshold = kwargs.get("zscore_threshold", 3)
         
         anomalies = pd.DataFrame(index=data.index)
         for column in data.columns:
-            if column != 'timestamp':
+            if column != "timestamp":
                 # Remove minimum values
                 column_data = self._remove_minimum(data[[column]])
                 
@@ -32,9 +32,9 @@ class ZScoreStrategy(AnomalyDetectionStrategy):
                 if len(non_null_data) > 1:
                     z_scores[non_null_data.index] = stats.zscore(non_null_data)
                     
-                    anomalies[f'{column}_is_anomaly'] = (z_scores > threshold) & (~z_scores.isna())
+                    anomalies[f"{column}_is_anomaly"] = (z_scores > threshold) & (~z_scores.isna())
                 else:
-                    anomalies[f'{column}_is_anomaly'] = False
+                    anomalies[f"{column}_is_anomaly"] = False
 
         anomaly_periods = self._identify_anomaly_periods(anomalies)
         return anomalies, anomaly_periods
