@@ -1,3 +1,4 @@
+from typing import Dict
 import pandas as pd
 
 from tmll.ml.preprocess.normalizer import Normalizer
@@ -101,3 +102,23 @@ class DataPreprocessor:
             return dataframe.loc[first_active:last_active]
         else:
             return dataframe.iloc[0:0]
+        
+    @staticmethod
+    def separate_timegraph(dataframe: pd.DataFrame, column: str) -> Dict[str, pd.DataFrame]:
+        """
+        Separate the DataFrame into multiple DataFrames based on the unique values in the specified column.
+
+        :param dataframe: The DataFrame to separate
+        :type dataframe: pd.DataFrame
+        :param column: The column to separate the DataFrame by
+        :type column: str
+        :return: A dictionary containing the separated DataFrames
+        :rtype: Dict[str, pd.DataFrame]
+        """
+        # If the column does not exist in the DataFrame, return the original DataFrame
+        if column not in dataframe.columns:
+            return {column: dataframe}
+        
+        # Separate the DataFrame based on the unique values in the specified column
+        unique_values = dataframe[column].unique()
+        return {value: dataframe[dataframe[column] == value].drop(columns=[column]) for value in unique_values}
