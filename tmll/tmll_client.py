@@ -316,7 +316,7 @@ class TMLLClient:
                             break  # Exit the loop if no more data is returned
 
                         x, y = None, None
-                        for serie in data.model.model.series[:1]:
+                        for serie in data.model.model.series:
                             # Get the x and y values from the data
                             x, y = serie.x_values, serie.y_values
 
@@ -324,9 +324,11 @@ class TMLLClient:
                             dataset = pd.DataFrame(data=np.c_[x, y], columns=["x", "y"])
 
                             # Get the series name
-                            series_name = serie.series_name
-                            if not series_name or series_name == "":
-                                series_name = f"Series {serie.series_id}"
+                            series_name = Tree.get_node_by_id(output["tree"], serie.series_id)
+                            if series_name:
+                                series_name = series_name.name
+                            else:
+                                series_name = serie.series_name
 
                             # Add the dataset to the datasets dictionary
                             datasets[output["output"].id] = datasets.get(output["output"].id, {})
@@ -462,7 +464,7 @@ class TMLLClient:
                         # For example, if the column contains "key=value" pairs, extract the key and value as separate columns
                         separate_columns = kwargs.get("separate_columns", False)
                         if separate_columns:
-                            row_data = self.extract_features_from_columns(row_data)
+                            row_data = self._extract_features_from_columns(row_data)
 
                         # Concatenate the row data to the DataFrame of the output
                         datasets[output["output"].id] = pd.concat([datasets[output["output"].id], row_data])
@@ -485,7 +487,7 @@ class TMLLClient:
 
         return datasets
     
-    def extract_features_from_columns(self, dataframe: pd.DataFrame) -> pd.DataFrame:
+    def _extract_features_from_columns(self, dataframe: pd.DataFrame) -> pd.DataFrame:
         """
         Extract features from the columns of the DataFrame. For example, if the column contains "key=value" pairs, extract the key and value as separate columns.
 
