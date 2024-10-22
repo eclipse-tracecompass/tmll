@@ -5,11 +5,12 @@ import matplotlib.pyplot as plt
 
 from tmll.common.services.logger import Logger
 from tmll.ml.visualization.plot_factory import PlotFactory
+from tmll.common.models.experiment import Experiment
 from tmll.tmll_client import TMLLClient
 
 class BaseModule(ABC):
 
-    def __init__(self, client: TMLLClient):
+    def __init__(self, client: TMLLClient) -> None:
         """
         Initialize the base module with the given TMLL client.
 
@@ -17,7 +18,7 @@ class BaseModule(ABC):
         :type client: TMLLClient
         """
         self.client = client
-        
+
         self.logger = Logger(self.__class__.__name__)
     
     def _plot(self, plots: List[Dict[str, Any]], plot_size: Tuple[float, float] = (15, 10), **kwargs) -> None:
@@ -97,7 +98,7 @@ class BaseModule(ABC):
         plt.show()
 
     @abstractmethod
-    def process(self):
+    def process(self, experiment: Experiment):
         """
         An abstract method to process the module.
         Each concrete module should implement this method.

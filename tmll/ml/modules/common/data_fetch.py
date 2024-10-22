@@ -1,37 +1,49 @@
 import pandas as pd
-from typing import List, Dict, Union
+from typing import List, Dict, Optional, Union, cast
 
-from tmll.tmll_client import TMLLClient
+from tmll.common.models.experiment import Experiment
 from tmll.common.models.output import Output
+from tmll.common.models.tree.tree import Tree
+from tmll.tmll_client import TMLLClient
 
 class DataFetcher:
-    def __init__(self, client: TMLLClient):
+    def __init__(self, client: TMLLClient) -> None:
         self.client = client
         self.logger = client.logger
 
-    def fetch_data(self, outputs: List[Output], force_reload: bool = False) -> Union[None, Dict[str, pd.DataFrame]]:
+    def fetch_data(self, experiment: Experiment,
+                   target_outputs: Optional[List[Output]] = None) -> Union[None, Dict[str, pd.DataFrame]]:
         """
         Fetch and process data for the given outputs.
 
-        :param outputs: List of Output objects to fetch data for
-        :type outputs: List[Output]
+        :param experiment: The experiment to fetch the data from
+        :type experiment: Experiment
+        :param target_outputs: The target outputs to fetch the data from
+        :type target_outputs: Optional[List[Output]]
         :param force_reload: Whether to force reload the data
         :type force_reload: bool
-        :return: The processed data for the given outputs
-        :rtype: Union[None, Dict[str, pd.DataFrame]]
         """
-        desired_outputs = outputs
-        if not desired_outputs:
-            desired_outputs = [o["output"] for o in self.client.outputs]
+        total_outputs = None
+        custom_output_ids = [output.id for output in target_outputs] if target_outputs else None
+        total_outputs = self.client.fetch_outputs(experiment=experiment, custom_output_ids=custom_output_ids)
+
+        if not total_outputs:
+            self.logger.error("No outputs fetched")
+            return None
+
+        if not target_outputs:
+            target_outputs = [cast(Output, output["output"]) for output in total_outputs]
 
         self.logger.info("Fetching data...")
-        data = self._fetch_data(outputs=desired_outputs, force_reload=force_reload)
+        data = self._fetch_data(experiment=experiment,
+                                experiment_outputs=total_outputs,
+                                target_outputs=target_outputs)
         if not data:
             self.logger.error("No data fetched")
             return None
 
         dataframes = {}
-        for output in desired_outputs:
+        for output in target_outputs:
             if output.id not in data:
                 self.logger.warning(f"The trace data does not contain the output {output.name}.")
                 continue
@@ -52,17 +64,23 @@ class DataFetcher:
 
         return dataframes
     
-    def _fetch_data(self, outputs: List[Output], force_reload: bool = False) -> Union[None, Dict[str, Union[pd.DataFrame, Dict[str, pd.DataFrame]]]]:
+    def _fetch_data(self, experiment: Experiment,
+                    experiment_outputs: List[Dict[str, Output | Tree]],
+                    target_outputs: List[Output]) -> Union[None, Dict[str, Union[pd.DataFrame, Dict[str, pd.DataFrame]]]]:
         """
         Fetch the data from the given outputs.
 
-        :param outputs: The outputs to fetch the data from
-        :type outputs: List[Output]
+        :param experiment: The experiment to fetch the data from
+        :type experiment: Experiment
+        :param experiment_outputs: The outputs of the experiment
+        :type experiment_outputs: List[Dict[str, Output | Tree]]
+        :param target_outputs: The target outputs to fetch the data from
+        :type target_outputs: List[Output]
         :param force_reload: Whether to force reload the data
         :type force_reload: bool
-        :return: The fetched data
-        :rtype: Union[None, Dict[str, Union[pd.DataFrame, Dict[str, pd.DataFrame]]]]
         """
-        custom_output_ids = [output.id for output in outputs]
-        self.client.fetch_outputs(custom_output_ids=custom_output_ids, force_reload=force_reload)
-        return self.client.fetch_data(custom_output_ids=custom_output_ids, separate_columns=True)
+        custom_output_ids = [output.id for output in target_outputs]
+        return self.client.fetch_data(experiment=experiment,
+                                      outputs=experiment_outputs,
+                                      custom_output_ids=custom_output_ids,
+                                      separate_columns=True)

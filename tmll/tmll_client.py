@@ -8,7 +8,7 @@ import re
 import pandas as pd
 import numpy as np
 
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, cast
 
 from tmll.common.models.data.table.column import TableDataColumn
 from tmll.common.models.data.table.table import TableData
@@ -32,7 +32,7 @@ from tmll.common.services.logger import Logger
 class TMLLClient:
 
     def __init__(self, tsp_server_host: str = "localhost", tsp_server_port: int = 8080,
-                 install_tsp_server: bool = True, force_install: bool = False,
+                 install_tsp_server: bool = False, force_install: bool = False,
                  verbose: bool = True, **kwargs) -> None:
         """
         Constructor for the TMLLClient class.
@@ -82,10 +82,6 @@ class TMLLClient:
 
         self.logger.info("Connected to the TSP server successfully.")
 
-        self.traces = []
-        self.experiment = None
-        self.outputs = []
-
         """
         THESE ARE THE TEMPORARY METHODS THAT WILL BE REMOVED IN THE FINAL VERSION
         """
@@ -104,7 +100,7 @@ class TMLLClient:
             _delete_experiments()
             _delete_traces()
 
-    def import_traces(self, traces: List[Dict[str, str]], experiment_name: str, remove_previous: bool = False) -> None:
+    def create_experiment(self, traces: List[Dict[str, str]], experiment_name: str, remove_previous: bool = False) -> Union[None, Experiment]:
         """
         Import traces into the Trace Server Protocol (TSP) server.
 
@@ -116,14 +112,8 @@ class TMLLClient:
         :type remove_previous: bool
         """
 
-        # Remove the previous traces and experiment if remove_previous is True
-        if remove_previous:
-            self.logger.info("Removing previous traces and experiment.")
-            self.traces = []
-            self.experiment = None
-            self.outputs = []
-
         # For each trace, add it to the TSP server
+        opened_traces = []
         for trace in traces:
             if "path" not in trace:
                 self.logger.error("The 'path' parameter is required for each trace.")
@@ -138,130 +128,143 @@ class TMLLClient:
                 self.logger.error(f"Failed to open trace '{trace['name']}'. Error: {response.status_text}")
                 continue
 
-            self.traces.append(Trace.from_tsp_trace(response.model))
+            opened_traces.append(Trace.from_tsp_trace(response.model))
             self.logger.info(f"Trace '{trace['name']}' opened successfully.")
 
+        # If no trace is opened, return None
+        if not opened_traces:
+            self.logger.error("No trace is opened. Please check the traces.")
+            return None
+
         # If create_experiment is True, create an experiment with the opened traces
-        trace_uuids = [trace.uuid for trace in self.traces]
+        trace_uuids = [trace.uuid for trace in opened_traces]
 
         opened_experiment = self.tsp_client.open_experiment(name=experiment_name, traces=trace_uuids)
         if opened_experiment.status_code != 200:
             self.logger.error(f"Failed to open experiment '{experiment_name}'. Error: {opened_experiment.status_text}")
-            return
+            return None
 
         # Check the status of the experiment periodically until it is completed
         # P.S.: It's not an efficient way to check the status. However, the tsp server does not provide a way to get the status of the experiment directly.
         self.logger.info(f"Checking the indexing status of the experiment '{experiment_name}'.")
+        experiment = None
         while (True):
             status = self.tsp_client.fetch_experiment(opened_experiment.model.UUID)
             if status.status_code != 200:
                 self.logger.error(f"Failed to fetch experiment. Error: {status.status_text}")
-                return
+                return None
 
             if status.model.indexing_status.name == IndexingStatus.COMPLETED.name:
-                self.experiment = Experiment.from_tsp_experiment(status.model)
+                experiment = Experiment.from_tsp_experiment(status.model)
                 self.logger.info(f"Experiment '{experiment_name}' is loaded completely.")
                 break
 
             # Wait for 1 second before checking the status again
             time.sleep(1)
 
-    def fetch_outputs(self, custom_output_ids: Optional[List[str]] = None, force_reload: bool = False) -> None:
+        return experiment
+    
+    def fetch_outputs(self, experiment: Experiment, custom_output_ids: Optional[List[str]] = None) -> Union[None, List[Dict[str, Union[Output, Tree]]]]:
         """
         Fetch the outputs of the experiment.
 
+        :param experiment: Experiment to fetch the outputs
+        :type experiment: Experiment
         :param custom_output_ids: List of custom output IDs to fetch
         :type custom_output_ids: Optional[List[str]]
         :param force_reload: Flag to force reload the outputs
         :type force_reload: bool
         """
         
-        if self.experiment is None:
-            self.logger.error("Experiment is not loaded. Please load the experiment first by calling the 'import_traces' method.")
-            return
+        if experiment is None:
+            self.logger.error("Experiment is not loaded. Please load the experiment first by calling the 'create_experiment' method.")
+            return None
 
-        if not self.outputs or force_reload:
-            # Get the outputs of the experiment
-            outputs = self.tsp_client.fetch_experiment_outputs(self.experiment.uuid)
-            if outputs.status_code != 200:
-                self.logger.error(f"Failed to fetch experiment outputs. Error: {outputs.status_text}")
-                return
+        # Get the outputs of the experiment
+        outputs = self.tsp_client.fetch_experiment_outputs(experiment.uuid)
+        if outputs.status_code != 200:
+            self.logger.error(f"Failed to fetch experiment outputs. Error: {outputs.status_text}")
+            return None
 
-            self.outputs = []  # Reset the outputs
-            for output_ in outputs.model.descriptors:
-                output = Output.from_tsp_output(output_)
+        fetched_outputs = []
+        for output_ in outputs.model.descriptors:
+            output = Output.from_tsp_output(output_)
 
-                # Check if the custom_output_ids is specified and the output is not in the custom_output_ids
-                if custom_output_ids and output.id not in custom_output_ids:
+            # Check if the custom_output_ids is specified and the output is not in the custom_output_ids
+            if custom_output_ids and output.id not in custom_output_ids:
+                continue
+
+            # Get the trees of the outputs
+            match output.type:
+                case "TABLE" | "DATA_TREE":
+                    while True:
+                        response = self.tsp_client.fetch_datatree(exp_uuid=experiment.uuid, output_id=output.id)
+                        if response.status_code != 200:
+                            response = self.tsp_client.fetch_timegraph_tree(exp_uuid=experiment.uuid, output_id=output.id)
+                            if response.status_code != 200:
+                                self.logger.error(f"Failed to fetch data tree. Error: {response.status_text}")
+                                break
+
+                        # Wait until the model is completely fetched (i.e., status is COMPLETED)
+                        if response.model.status.name == ResponseStatus.COMPLETED.name:
+                            break
+
+                        time.sleep(1)
+
+                case "TIME_GRAPH":
+                    while True:
+                        response = self.tsp_client.fetch_timegraph_tree(exp_uuid=experiment.uuid, output_id=output.id)
+                        if response.status_code != 200:
+                            self.logger.error(f"Failed to fetch time graph tree. Error: {response.status_text}")
+                            break
+                        
+                        # Wait until the model is completely fetched (i.e., status is COMPLETED)
+                        if response.model.status.name == ResponseStatus.COMPLETED.name:
+                            break
+
+                        time.sleep(1)
+
+                case "TREE_TIME_XY":
+                    while True:
+                        response = self.tsp_client.fetch_xy_tree(exp_uuid=experiment.uuid, output_id=output.id)
+                        if response.status_code != 200:
+                            self.logger.error(f"Failed to fetch XY tree. Error: {response.status_text}")
+                            break
+                        
+                        # Wait until the model is completely fetched (i.e., status is COMPLETED)
+                        if response.model.status.name == ResponseStatus.COMPLETED.name:
+                            break
+
+                        time.sleep(1)
+                case _:
+                    self.logger.warning(f"Output type '{output.type}' is not supported.")
                     continue
 
-                # Get the trees of the outputs
-                match output.type:
-                    case "TABLE" | "DATA_TREE":
-                        while True:
-                            response = self.tsp_client.fetch_datatree(exp_uuid=self.experiment.uuid, output_id=output.id)
-                            if response.status_code != 200:
-                                response = self.tsp_client.fetch_timegraph_tree(exp_uuid=self.experiment.uuid, output_id=output.id)
-                                if response.status_code != 200:
-                                    self.logger.error(f"Failed to fetch data tree. Error: {response.status_text}")
-                                    break
+            model = response.model.model
+            if model is None:
+                self.logger.warning(f"Tree of the output '{output.name}' is None.")
+                continue
 
-                            # Wait until the model is completely fetched (i.e., status is COMPLETED)
-                            if response.model.status.name == ResponseStatus.COMPLETED.name:
-                                break
+            tree = Tree.from_tsp_tree(model)
 
-                            time.sleep(1)
+            fetched_outputs.append({
+                "output": output,
+                "tree": tree
+            })
+            self.logger.info(f"Output '{output.name}' and its tree fetched successfully.")
 
-                    case "TIME_GRAPH":
-                        while True:
-                            response = self.tsp_client.fetch_timegraph_tree(exp_uuid=self.experiment.uuid, output_id=output.id)
-                            if response.status_code != 200:
-                                self.logger.error(f"Failed to fetch time graph tree. Error: {response.status_text}")
-                                break
-                            
-                            # Wait until the model is completely fetched (i.e., status is COMPLETED)
-                            if response.model.status.name == ResponseStatus.COMPLETED.name:
-                                break
+        self.logger.info("Outputs are fetched successfully.")
 
-                            time.sleep(1)
+        return fetched_outputs
 
-                    case "TREE_TIME_XY":
-                        while True:
-                            response = self.tsp_client.fetch_xy_tree(exp_uuid=self.experiment.uuid, output_id=output.id)
-                            if response.status_code != 200:
-                                self.logger.error(f"Failed to fetch XY tree. Error: {response.status_text}")
-                                break
-                            
-                            # Wait until the model is completely fetched (i.e., status is COMPLETED)
-                            if response.model.status.name == ResponseStatus.COMPLETED.name:
-                                break
-
-                            time.sleep(1)
-                    case _:
-                        self.logger.warning(f"Output type '{output.type}' is not supported.")
-                        continue
-
-                model = response.model.model
-                if model is None:
-                    self.logger.warning(f"Tree of the output '{output.name}' is None.")
-                    continue
-
-                tree = Tree.from_tsp_tree(model)
-
-                self.outputs.append({
-                    "output": output,
-                    "tree": tree
-                })
-                self.logger.info(f"Output '{output.name}' and its tree fetched successfully.")
-
-            self.logger.info("Outputs are fetched successfully.")
-        else:
-            self.logger.info("Outputs are already fetched. If you want to force reload the outputs, set the 'force_reload' parameter to True.")
-
-    def fetch_data(self, custom_output_ids: Optional[List[str]] = None, **kwargs) -> Union[None, Dict[str, Union[pd.DataFrame, Dict[str, pd.DataFrame]]]]:
+    def fetch_data(self, experiment: Experiment, outputs: List[Dict[str, Union[Output, Tree]]], custom_output_ids: Optional[List[str]] = None, **kwargs) -> Union[None, Dict[str, Union[pd.DataFrame, Dict[str, pd.DataFrame]]]]:
         """
         Fetch the data for the outputs.
 
+        :param experiment: Experiment to fetch the data
+        :type experiment: Experiment
+        :param outputs: List of outputs to fetch the data
+        :type outputs: List[Dict[str, Union[Output, Tree]]]
         :param custom_output_ids: List of custom output IDs to fetch
         :type custom_output_ids: Optional[List[str]]
         :param kwargs: Additional parameters for fetching the data
@@ -271,27 +274,31 @@ class TMLLClient:
         """
         
         # Check if the experiment is loaded
-        if self.experiment is None:
+        if experiment is None:
             self.logger.error("Experiment is not loaded. Please load the experiment first.")
             return None
 
         # Check if the outputs are fetched
-        if not self.outputs:
+        if not outputs:
             self.logger.error("Outputs are not fetched. Please fetch the outputs first.")
             return None
 
         datasets = {}
-        for output in self.outputs:
+        for output in outputs:
+            # Get the output and tree from the outputs
+            o_output = cast(Output, output["output"])
+            o_tree = cast(Tree, output["tree"])
+
             # If custom_output_ids is specified, only fetch the data of the specified outputs
-            if custom_output_ids and output["output"].id not in custom_output_ids:
+            if custom_output_ids and o_output.id not in custom_output_ids:
                 continue
 
-            match output["output"].type:
+            match o_output.type:
                 case "TREE_TIME_XY":
                     # Prepare the parameters for the TSP server
-                    item_ids = list(map(int, [node.id for node in output["tree"].nodes]))
-                    time_range_start = kwargs.get("start", self.experiment.start)
-                    time_range_end = kwargs.get("end", self.experiment.end)
+                    item_ids = list(map(int, [node.id for node in o_tree.nodes]))
+                    time_range_start = kwargs.get("start", experiment.start)
+                    time_range_end = kwargs.get("end", experiment.end)
                     time_range_num_times = kwargs.get("num_times", 65536)
 
                     while True:
@@ -307,7 +314,7 @@ class TMLLClient:
                         }
 
                         # Send a request to the TSP server to fetch the XY data
-                        data = self.tsp_client.fetch_xy(exp_uuid=self.experiment.uuid, output_id=output["output"].id, parameters=parameters)
+                        data = self.tsp_client.fetch_xy(exp_uuid=experiment.uuid, output_id=o_output.id, parameters=parameters)
                         if data.status_code != 200 or data.model.model is None:
                             self.logger.error(f"Failed to fetch XY data. Error: {data.status_text}")
                             break  # Exit the loop if there's an error
@@ -324,15 +331,15 @@ class TMLLClient:
                             dataset = pd.DataFrame(data=np.c_[x, y], columns=["x", "y"])
 
                             # Get the series name
-                            series_name = Tree.get_node_by_id(output["tree"], serie.series_id)
+                            series_name = Tree.get_node_by_id(o_tree, serie.series_id)
                             if series_name:
                                 series_name = series_name.name
                             else:
                                 series_name = serie.series_name
 
                             # Add the dataset to the datasets dictionary
-                            datasets[output["output"].id] = datasets.get(output["output"].id, {})
-                            datasets[output["output"].id][series_name] = pd.concat([datasets[output["output"].id].get(series_name, pd.DataFrame()), dataset])
+                            datasets[o_output.id] = datasets.get(o_output.id, {})
+                            datasets[o_output.id][series_name] = pd.concat([datasets[o_output.id].get(series_name, pd.DataFrame()), dataset])
 
                         # Update the time_range_start for the next iteration
                         if x and len(x) > 0:
@@ -345,9 +352,9 @@ class TMLLClient:
                             break  # Exit if no data was received in this iteration
 
                 case "TIME_GRAPH":
-                    items = list(map(int, [node.id for node in output["tree"].nodes]))
-                    time_range_start = kwargs.get("start", self.experiment.start)
-                    time_range_end = kwargs.get("end", self.experiment.end)
+                    items = list(map(int, [node.id for node in o_tree.nodes]))
+                    time_range_start = kwargs.get("start", experiment.start)
+                    time_range_end = kwargs.get("end", experiment.end)
                     time_range_num_times = kwargs.get("num_times", 65536)
                     strategy = kwargs.get("strategy", "DEEP")
 
@@ -367,7 +374,7 @@ class TMLLClient:
                         }
 
                         # Send a request to the TSP server to fetch the time graph data
-                        data = self.tsp_client.fetch_timegraph_states(exp_uuid=self.experiment.uuid, output_id=output["output"].id, parameters=parameters)
+                        data = self.tsp_client.fetch_timegraph_states(exp_uuid=experiment.uuid, output_id=o_output.id, parameters=parameters)
                         if data.status_code != 200 or data.model.model is None:
                             self.logger.error(f"Failed to fetch time graph data. Error: {data.status_text}")
                             break
@@ -382,7 +389,8 @@ class TMLLClient:
                         data = []
                         for row in timegraph.rows:
                             for state in row.states:
-                                parent_id = output["tree"].get_node_parent(row.entry_id).id
+                                parent_node = o_tree.get_node_parent(row.entry_id)
+                                parent_id = parent_node.id if parent_node else row.entry_id
                                 data.append({
                                     "entry_id": parent_id,
                                     "start_time": state.start,
@@ -393,10 +401,10 @@ class TMLLClient:
                         dataset = pd.DataFrame(data)
 
                         # Add the dataset to the datasets dictionary
-                        if output["output"].id not in datasets:
-                            datasets[output["output"].id] = pd.DataFrame()
+                        if o_output.id not in datasets:
+                            datasets[o_output.id] = pd.DataFrame()
                         
-                        datasets[output["output"].id] = pd.concat([datasets[output["output"].id], dataset])
+                        datasets[o_output.id] = pd.concat([datasets[o_output.id], dataset])
 
                         # Update the time_range_start for the next iteration
                         if data and len(data) > 0:
@@ -409,9 +417,9 @@ class TMLLClient:
                             break
 
                 case "TABLE" | "DATA_TREE":
-                    columns = self.tsp_client.fetch_virtual_table_columns(exp_uuid=self.experiment.uuid, output_id=output["output"].id)
+                    columns = self.tsp_client.fetch_virtual_table_columns(exp_uuid=experiment.uuid, output_id=o_output.id)
                     if columns.status_code != 200:
-                        self.logger.error(f"Failed to fetch '{output['output'].name}' virtual table columns. Error: {columns.status_text}")
+                        self.logger.error(f"Failed to fetch '{o_output.name}' virtual table columns. Error: {columns.status_text}")
                         continue
 
                     columns = [TableDataColumn.from_tsp_table_column(column) for column in columns.model.model.columns]
@@ -435,23 +443,23 @@ class TMLLClient:
                         }
 
                         # Send a request to the TSP server to fetch the virtual table data
-                        table_request = self.tsp_client.fetch_virtual_table_lines(exp_uuid=self.experiment.uuid, output_id=output["output"].id, parameters=parameters)
+                        table_request = self.tsp_client.fetch_virtual_table_lines(exp_uuid=experiment.uuid, output_id=o_output.id, parameters=parameters)
 
                         # If the request is not successful or the table data is None, break the loop
                         if table_request.status_code != 200 or table_request.model.model is None:
-                            self.logger.error(f"Failed to fetch '{output['output'].name}' virtual table data. Error: {table_request.status_text}")
+                            self.logger.error(f"Failed to fetch '{o_output.name}' virtual table data. Error: {table_request.status_text}")
                             break
 
                         # Create the table model
                         table = TableData.from_tsp_table(table_request.model.model)
 
                         # If the DataFrame for the output is not created yet, create it
-                        if output["output"].id not in datasets:
+                        if o_output.id not in datasets:
                             initial_table_columns = [c.name for c_id in table.columns for c in columns if c.id == c_id]
                             if not initial_table_columns:
                                 initial_table_columns = [f"Column {c}" for c in table.columns]
 
-                            datasets[output["output"].id] = pd.DataFrame(columns=initial_table_columns)
+                            datasets[o_output.id] = pd.DataFrame(columns=initial_table_columns)
 
                         # If there are no rows in the table, break the loop since there is no more data to fetch
                         if not table.rows:
@@ -467,7 +475,7 @@ class TMLLClient:
                             row_data = self._extract_features_from_columns(row_data)
 
                         # Concatenate the row data to the DataFrame of the output
-                        datasets[output["output"].id] = pd.concat([datasets[output["output"].id], row_data])
+                        datasets[o_output.id] = pd.concat([datasets[o_output.id], row_data])
 
                         # If the number of rows in the table is less than the line count, break the loop since there is no more data to fetch
                         if len(table.rows) < line_count:
@@ -478,10 +486,10 @@ class TMLLClient:
 
                         break
                 case _:
-                    self.logger.warning(f"Output type '{output['output'].type}' is not supported.")
+                    self.logger.warning(f"Output type '{o_output.type}' is not supported.")
                     continue
 
-            self.logger.info(f"Data fetched for the output '{output['output'].name}'.")
+            self.logger.info(f"Data fetched for the output '{o_output.name}'.")
 
         self.logger.info("All data fetched successfully.")
 
