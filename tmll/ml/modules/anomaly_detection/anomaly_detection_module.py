@@ -4,7 +4,9 @@ import matplotlib.pyplot as plt
 
 from functools import reduce
 
+from tmll.common.models.experiment import Experiment
 from tmll.ml.modules.anomaly_detection.strategies.base import AnomalyDetectionStrategy
+from tmll.ml.modules.anomaly_detection.strategies.frequency_domain import FrequencyDomainStrategy
 from tmll.ml.modules.base_module import BaseModule
 from tmll.ml.modules.anomaly_detection.strategies.combined import CombinedStrategy
 from tmll.ml.modules.anomaly_detection.strategies.iqr import IQRStrategy
@@ -41,11 +43,11 @@ TARGET_OUTPUTS = [
         "id": "org.eclipse.tracecompass.analysis.os.linux.core.inputoutput.DisksIODataProvider",
         "type": "TREE_TIME_XY"
     }),
-    # Output.from_dict({
-    #     "name": "IRQ Analysis - Latency vs Time",
-    #     "id": "org.eclipse.tracecompass.internal.analysis.timing.core.segmentstore.scatter.dataprovider:lttng.analysis.irq",
-    #     "type": "TREE_TIME_XY"
-    # }),
+    Output.from_dict({
+        "name": "IRQ Analysis - Latency vs Time",
+        "id": "org.eclipse.tracecompass.internal.analysis.timing.core.segmentstore.scatter.dataprovider:lttng.analysis.irq",
+        "type": "TREE_TIME_XY"
+    }),
     Output.from_dict({
         "name": "Flame Chart - Call Stack",
         "id": "org.eclipse.tracecompass.analysis.profiling.core.flamechart:org.eclipse.tracecompass.incubator.uftrace.analysis.callstack",
@@ -57,7 +59,7 @@ TARGET_OUTPUTS = [
 MINIMUM_REQUIRED_DATAPOINTS = 10
 
 # Anomaly detection methods supported by the module
-DETECTION_METHODS = Literal["zscore", "iqr", "moving_average", "combined", "iforest", "seasonality"]
+DETECTION_METHODS = Literal["zscore", "iqr", "moving_average", "combined", "iforest", "seasonality", "frequency_domain"]
 
 class AnomalyDetection(BaseModule):
     """
@@ -90,22 +92,25 @@ class AnomalyDetection(BaseModule):
             "moving_average": MovingAverageStrategy(),
             "combined": CombinedStrategy([ZScoreStrategy(), IQRStrategy(), MovingAverageStrategy()]),
             "iforest": IsolationForestStrategy(),
-            "seasonality": SeasonalityStrategy()
+            "seasonality": SeasonalityStrategy(),
+            "frequency_domain": FrequencyDomainStrategy()
         }
 
-    def process(self, method: str = "iforest", aggregate: bool = True, force_reload: bool = False, **kwargs) -> None:
+    def process(self, experiment: Experiment, method: str = "iforest", aggregate: bool = True, force_reload: bool = False, **kwargs) -> None:
         """
         Process the data and perform anomaly detection.
 
         This method fetches data if necessary, preprocesses it, and applies the specified
         anomaly detection method.
 
+        :param experiment: The experiment to process.
+        :type experiment: Experiment
         :param method: The anomaly detection method to use.
-        :type method: str, optional
-        :param aggregate: If True, aggregate all the outputs into a single dataframe.
-        :type aggregate: bool, optional
-        :param force_reload: If True, forces data reloading.
-        :type force_reload: bool, optional
+        :type method: str
+        :param aggregate: Whether to aggregate the dataframes into a single dataframe.
+        :type aggregate: bool
+        :param force_reload: Whether to force reload the data.
+        :type force_reload: bool
         :param kwargs: Additional keyword arguments to pass to the anomaly detection method.
         :return: None
         """
@@ -118,7 +123,7 @@ class AnomalyDetection(BaseModule):
             
             self.dataframes.clear()
 
-            data = self.data_fetcher.fetch_data(TARGET_OUTPUTS)
+            data = self.data_fetcher.fetch_data(experiment=experiment, target_outputs=TARGET_OUTPUTS)
             if data is None:
                 self.logger.error("No data fetched")
                 return
@@ -142,15 +147,17 @@ class AnomalyDetection(BaseModule):
                             continue
 
                         self.dataframes[f"{output_key}${key}"] = value
+                else:
+                    self.dataframes[output_key] = output_data
+
+            resample_freq = kwargs.get("resample_freq", None)
+            if not resample_freq:
+                self.logger.warning("No resample frequency provided. Using default frequency of 1 second.")
+                resample_freq = "1s"
 
             for output_key, output_data in self.dataframes.items():
                 self.dataframes[output_key] = self.data_preprocessor.normalize(output_data)
                 self.dataframes[output_key] = self.data_preprocessor.convert_to_datetime(self.dataframes[output_key])
-
-                resample_freq = kwargs.get("resample_freq", None)
-                if not resample_freq:
-                    self.logger.warning("No resample frequency provided. Using default frequency of 1 second.")
-                    resample_freq = "1s"
                 self.dataframes[output_key] = self.data_preprocessor.resample(self.dataframes[output_key], frequency=resample_freq)
 
             # Remove dataframes with less than the minimum required data points
