@@ -1,6 +1,7 @@
 from typing import List
 
 from tmll.common.models.trace import Trace
+from tmll.common.models.output import Output
 
 
 class Experiment(Trace):
@@ -20,6 +21,8 @@ class Experiment(Trace):
         super().__init__(name=name, uuid=uuid, start=start, end=end, num_events=num_events, indexing=indexing, path="")
         self.traces = traces
 
+        self.outputs = []
+
     @classmethod
     def from_trace(cls, trace_: Trace, traces: List[Trace] = []) -> 'Experiment':
         return cls(trace_.name, trace_.uuid, trace_.start, trace_.end, trace_.num_events, trace_.indexing, traces)
@@ -29,5 +32,8 @@ class Experiment(Trace):
         traces = [Trace.from_tsp_trace(tsp_trace) for tsp_trace in tsp_experiment.traces.traces]
         return cls(tsp_experiment.name, tsp_experiment.UUID, tsp_experiment.start, tsp_experiment.end, tsp_experiment.number_of_events, tsp_experiment.indexing_status.name, traces)
 
+    def assign_outputs(self, outputs: List[Output]) -> None:
+        self.outputs = outputs
+
     def __repr__(self) -> str:
-        return f"Experiment(name={self.name}, uuid={self.uuid}, start={self.start}, end={self.end}, num_events={self.num_events}, indexing={self.indexing}, traces={self.traces})"
+        return f"Experiment(name={self.name}, uuid={self.uuid}, start={self.start}, end={self.end}, num_events={self.num_events}, indexing={self.indexing}, traces={self.traces}, outputs={self.outputs})"

@@ -25,7 +25,7 @@ class DataFetcher:
         """
         total_outputs = None
         custom_output_ids = [output.id for output in target_outputs] if target_outputs else None
-        total_outputs = self.client.fetch_outputs(experiment=experiment, custom_output_ids=custom_output_ids)
+        total_outputs = self.client.fetch_outputs_with_tree(experiment=experiment, custom_output_ids=custom_output_ids)
 
         if not total_outputs:
             self.logger.error("No outputs fetched")

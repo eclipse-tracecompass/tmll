@@ -162,9 +162,38 @@ class TMLLClient:
             # Wait for 1 second before checking the status again
             time.sleep(1)
 
+        # If the experiment is loaded, assign the outputs to the experiment
+        if experiment:
+            experiment.assign_outputs(self._fetch_outputs(experiment))
+
         return experiment
     
-    def fetch_outputs(self, experiment: Experiment, custom_output_ids: Optional[List[str]] = None) -> Union[None, List[Dict[str, Union[Output, Tree]]]]:
+    def _fetch_outputs(self, experiment: Experiment) -> List[Output]:
+        """
+        Fetch the outputs of the experiment.
+
+        :param experiment: Experiment to fetch the outputs
+        :type experiment: Experiment
+        :return: List of outputs
+        :rtype: List[Output]
+        """
+
+        if experiment is None:
+            self.logger.error("Experiment is not loaded. Please load the experiment first by calling the 'create_experiment' method.")
+            return []
+
+        # Get the outputs of the experiment
+        outputs = self.tsp_client.fetch_experiment_outputs(experiment.uuid)
+        if outputs.status_code != 200:
+            self.logger.error(f"Failed to fetch experiment outputs. Error: {outputs.status_text}")
+            return []
+
+        fetched_outputs = [Output.from_tsp_output(output) for output in outputs.model.descriptors]
+        self.logger.info("Outputs are fetched successfully.")
+
+        return fetched_outputs
+    
+    def fetch_outputs_with_tree(self, experiment: Experiment, custom_output_ids: Optional[List[str]] = None) -> Union[None, List[Dict[str, Union[Output, Tree]]]]:
         """
         Fetch the outputs of the experiment.
 
@@ -181,15 +210,12 @@ class TMLLClient:
             return None
 
         # Get the outputs of the experiment
-        outputs = self.tsp_client.fetch_experiment_outputs(experiment.uuid)
-        if outputs.status_code != 200:
-            self.logger.error(f"Failed to fetch experiment outputs. Error: {outputs.status_text}")
-            return None
+        outputs = experiment.outputs
+        if not outputs:
+            outputs = self._fetch_outputs(experiment)
 
         fetched_outputs = []
-        for output_ in outputs.model.descriptors:
-            output = Output.from_tsp_output(output_)
-
+        for output in outputs:
             # Check if the custom_output_ids is specified and the output is not in the custom_output_ids
             if custom_output_ids and output.id not in custom_output_ids:
                 continue
