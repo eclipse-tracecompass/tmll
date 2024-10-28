@@ -5,3 +5,4 @@ from .response import Response
 
 from .data import *
 from .tree import *
+from .timegraph import *
