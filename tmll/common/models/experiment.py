@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional, Union
 
 from tmll.common.models.trace import Trace
 from tmll.common.models.output import Output
@@ -37,3 +37,70 @@ class Experiment(Trace):
 
     def __repr__(self) -> str:
         return f"Experiment(name={self.name}, uuid={self.uuid}, start={self.start}, end={self.end}, num_events={self.num_events}, indexing={self.indexing}, traces={self.traces}, outputs={self.outputs})"
+
+    def find_outputs(self, keyword: Optional[Union[str, List[str]]] = None, type: Optional[Union[str, List[str]]] = None, match_any: bool = False) -> List[Output]:
+        """
+        Find outputs based on various criteria with flexible matching logic.
+            
+        Examples:
+            # AND logic (default)
+            find_outputs(keyword="cpu", type="time_series")  # Must match both
+            
+            # OR logic
+            find_outputs(keyword="cpu", type="event", match_any=True)  # Can match either
+            
+            # Multiple values for each criteria
+            find_outputs(
+                keyword=["cpu", "memory"],     # With match_any=False: must contain both words
+                type=["time_graph", "xy"],  # With match_any=True: can contain either word
+            )
+        
+        :param keyword: The keyword(s) to search for in the output name, description, and id
+        :type keyword: str or List[str], optional
+        :param type: The type(s) to search for in the output type
+        :type type: str or List[str], optional
+        :param match_any: Whether to match any criteria (OR) or all criteria (AND). Default is False
+        :type match_any: bool, optional
+        :return: The list of outputs that match the given criteria
+        :rtype: List[Output]
+        """
+        # Convert single strings to lists for consistent processing
+        keywords = [keyword] if isinstance(keyword, str) else keyword
+        types = [type] if isinstance(type, str) else type
+        
+        # If no criteria provided, return all outputs
+        if not any([keywords, types]):
+            return self.outputs
+
+        # Helper function to check if text contains any/all keywords
+        def matches_keywords(text: str, keys: List[str], match_any: bool) -> bool:
+            text = text.lower()
+            keys = [k.lower() for k in keys]
+
+            if not keys:
+                return True
+            
+            if match_any:
+                return any(k in text for k in keys)
+            return all(k in text for k in keys)
+
+        matches = []
+        for output in self.outputs:
+            # Check keywords in name, description, and id
+            search_text = f"{output.name} {output.description} {output.id}"
+            keywords_match = matches_keywords(search_text, keywords or [], match_any)
+            
+            # Check type
+            type_match = matches_keywords(output.type, types or [], match_any)
+            
+            # Combine all criteria based on match_any
+            if match_any:
+                # OR: include if any criteria matches
+                if keywords_match or type_match:
+                    matches.append(output)
+            else:
+                # AND: include only if all criteria match
+                if keywords_match and type_match:
+                    matches.append(output)
+        
+        return sorted(matches, key=lambda x: x.name)
