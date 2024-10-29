@@ -1,5 +1,5 @@
 import pandas as pd
-from typing import List, Literal, Dict
+from typing import List, Literal, Dict, Optional
 import matplotlib.pyplot as plt
 
 from functools import reduce
@@ -19,41 +19,6 @@ from tmll.ml.modules.common.data_preprocess import DataPreprocessor
 from tmll.common.models.output import Output
 from tmll.tmll_client import TMLLClient
 
-
-# The target outputs to fetch data from for anomaly detection analysis
-TARGET_OUTPUTS = [
-    Output.from_dict({
-        "name": "Histogram",
-        "id": "org.eclipse.tracecompass.internal.tmf.core.histogram.HistogramDataProvider",
-        "type": "TREE_TIME_XY"
-    }),
-    Output.from_dict({
-        "name": "System Call Latency - Latency vs Time",
-        "id": ("org.eclipse.tracecompass.internal.analysis.timing.core.segmentstore.scatter.dataprovider:",
-               "org.eclipse.tracecompass.analysis.os.linux.latency.syscall"),
-        "type": "TREE_TIME_XY"
-    }),
-    Output.from_dict({
-        "name": "CPU Usage",
-        "id": "org.eclipse.tracecompass.analysis.os.linux.core.cpuusage.CpuUsageDataProvider",
-        "type": "TREE_TIME_XY"
-    }),
-    Output.from_dict({
-        "name": "Disk I/O View",
-        "id": "org.eclipse.tracecompass.analysis.os.linux.core.inputoutput.DisksIODataProvider",
-        "type": "TREE_TIME_XY"
-    }),
-    Output.from_dict({
-        "name": "IRQ Analysis - Latency vs Time",
-        "id": "org.eclipse.tracecompass.internal.analysis.timing.core.segmentstore.scatter.dataprovider:lttng.analysis.irq",
-        "type": "TREE_TIME_XY"
-    }),
-    Output.from_dict({
-        "name": "Flame Chart - Call Stack",
-        "id": "org.eclipse.tracecompass.analysis.profiling.core.flamechart:org.eclipse.tracecompass.incubator.uftrace.analysis.callstack",
-        "type": "TIME_GRAPH"
-    }),
-]
 
 # Minimum number of data points required for anomaly detection analysis to proceed with
 MINIMUM_REQUIRED_DATAPOINTS = 10
@@ -80,9 +45,10 @@ class AnomalyDetection(BaseModule):
         :type client: TMLLClient
         """
         super().__init__(client=client)
+        self.experiment: Experiment = Experiment("", "", 0, 0, 0, "")
         self.detection_method: str = ""
-        self.data_fetcher = DataFetcher(client)
-        self.data_preprocessor = DataPreprocessor()
+        self.data_fetcher: DataFetcher = DataFetcher(client)
+        self.data_preprocessor: DataPreprocessor = DataPreprocessor()
         self.dataframes: Dict[str, pd.DataFrame] = {}
         self.anomalies: Dict[str, pd.DataFrame] = {}
         self.anomaly_periods: Dict[str, List] = {}
@@ -96,15 +62,16 @@ class AnomalyDetection(BaseModule):
             "frequency_domain": FrequencyDomainStrategy()
         }
 
-    def process(self, experiment: Experiment, method: str = "iforest", aggregate: bool = True, force_reload: bool = False, **kwargs) -> None:
+    def process(self, experiment: Experiment, outputs: Optional[List[Output]] = None, method: str = "iforest", aggregate: bool = True, force_reload: bool = False, **kwargs) -> None:
         """
         Process the data and perform anomaly detection.
-
         This method fetches data if necessary, preprocesses it, and applies the specified
         anomaly detection method.
 
         :param experiment: The experiment to process.
         :type experiment: Experiment
+        :param outputs: The list of output IDs to process. If None, all outputs are processed.
+        :type outputs: List[int], optional
         :param method: The anomaly detection method to use.
         :type method: str
         :param aggregate: Whether to aggregate the dataframes into a single dataframe.
@@ -118,18 +85,20 @@ class AnomalyDetection(BaseModule):
         self.anomalies.clear()
         self.anomaly_periods.clear()
 
+        self.experiment = experiment
+
         if force_reload or not self.dataframes:
             self.logger.info(f"Starting anomaly detection analysis using {method} method...")
             
             self.dataframes.clear()
 
-            data = self.data_fetcher.fetch_data(experiment=experiment, target_outputs=TARGET_OUTPUTS)
+            data = self.data_fetcher.fetch_data(experiment=experiment, target_outputs=outputs)
             if data is None:
                 self.logger.error("No data fetched")
                 return
             
             for output_key, output_data in data.items():
-                output_type = next((output.type for output in TARGET_OUTPUTS if str(output.id) in output_key), None)
+                output_type = next((output.type for output in (outputs or []) if str(output.id) in output_key), None)
 
                 if output_type and output_type == "TIME_GRAPH":
                     output_data["duration"] = output_data["end_time"] - output_data["start_time"]
@@ -216,6 +185,10 @@ class AnomalyDetection(BaseModule):
         colors = plt.colormaps.get_cmap("tab20")
 
         for output_key, dataframe in self.dataframes.items():
+            # Check if the output key is in the anomalies
+            if output_key not in self.anomalies:
+                continue
+
             plots = []
             # Plot the original data
             for column in dataframe.columns:
@@ -271,7 +244,7 @@ class AnomalyDetection(BaseModule):
                 })
 
             output_name = ""
-            for output in TARGET_OUTPUTS:
+            for output in self.experiment.outputs:
                 if str(output.id) in output_key:
                     output_name = output.name
                     if "$" in output_key:
