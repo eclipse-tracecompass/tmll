@@ -10,14 +10,17 @@ from tmll.tmll_client import TMLLClient
 
 class BaseModule(ABC):
 
-    def __init__(self, client: TMLLClient) -> None:
+    def __init__(self, client: TMLLClient, experiment: Experiment) -> None:
         """
         Initialize the base module with the given TMLL client.
 
         :param client: The TMLL client to use
         :type client: TMLLClient
+        :param experiment: The experiment to analyze
+        :type experiment: Experiment
         """
         self.client = client
+        self.experiment = experiment
 
         self.logger = Logger(self.__class__.__name__)
     
@@ -98,7 +101,7 @@ class BaseModule(ABC):
         plt.show()
 
     @abstractmethod
-    def process(self, experiment: Experiment):
+    def process(self):
         """
         An abstract method to process the module.
         Each concrete module should implement this method.

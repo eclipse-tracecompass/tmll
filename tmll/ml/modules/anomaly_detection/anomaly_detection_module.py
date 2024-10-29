@@ -37,15 +37,17 @@ class AnomalyDetection(BaseModule):
     :type client: TMLLClient
     """
 
-    def __init__(self, client: TMLLClient):
+    def __init__(self, client: TMLLClient, experiment: Experiment) -> None:
         """
         Initialize the AnomalyDetection module.
 
         :param client: The TMLL client for data communication.
         :type client: TMLLClient
+        :param experiment: The experiment to analyze.
+        :type experiment: Experiment
         """
-        super().__init__(client=client)
-        self.experiment: Experiment = Experiment("", "", 0, 0, 0, "")
+        super().__init__(client=client, experiment=experiment)
+        self.experiment: Experiment = experiment
         self.detection_method: str = ""
         self.data_fetcher: DataFetcher = DataFetcher(client)
         self.data_preprocessor: DataPreprocessor = DataPreprocessor()
@@ -62,14 +64,12 @@ class AnomalyDetection(BaseModule):
             "frequency_domain": FrequencyDomainStrategy()
         }
 
-    def process(self, experiment: Experiment, outputs: Optional[List[Output]] = None, method: str = "zscore", aggregate: bool = False, force_reload: bool = False, **kwargs) -> None:
+    def process(self, outputs: Optional[List[Output]] = None, method: str = "zscore", aggregate: bool = False, force_reload: bool = False, **kwargs) -> None:
         """
         Process the data and perform anomaly detection.
         This method fetches data if necessary, preprocesses it, and applies the specified
         anomaly detection method.
 
-        :param experiment: The experiment to process.
-        :type experiment: Experiment
         :param outputs: The list of output IDs to process. If None, all outputs are processed.
         :type outputs: List[int], optional
         :param method: The anomaly detection method to use.
@@ -85,14 +85,12 @@ class AnomalyDetection(BaseModule):
         self.anomalies.clear()
         self.anomaly_periods.clear()
 
-        self.experiment = experiment
-
         if force_reload or not self.dataframes:
             self.logger.info(f"Starting anomaly detection analysis using {method} method...")
             
             self.dataframes.clear()
 
-            data = self.data_fetcher.fetch_data(experiment=experiment, target_outputs=outputs)
+            data = self.data_fetcher.fetch_data(experiment=self.experiment, target_outputs=outputs)
             if data is None:
                 self.logger.error("No data fetched")
                 return
