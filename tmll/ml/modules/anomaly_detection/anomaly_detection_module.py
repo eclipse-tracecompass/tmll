@@ -62,7 +62,7 @@ class AnomalyDetection(BaseModule):
             "frequency_domain": FrequencyDomainStrategy()
         }
 
-    def process(self, experiment: Experiment, outputs: Optional[List[Output]] = None, method: str = "iforest", aggregate: bool = True, force_reload: bool = False, **kwargs) -> None:
+    def process(self, experiment: Experiment, outputs: Optional[List[Output]] = None, method: str = "zscore", aggregate: bool = False, force_reload: bool = False, **kwargs) -> None:
         """
         Process the data and perform anomaly detection.
         This method fetches data if necessary, preprocesses it, and applies the specified
