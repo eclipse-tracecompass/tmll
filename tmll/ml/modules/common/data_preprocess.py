@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Optional, Tuple
 import pandas as pd
 
 from tmll.ml.preprocess.normalizer import Normalizer
@@ -122,3 +122,28 @@ class DataPreprocessor:
         # Separate the DataFrame based on the unique values in the specified column
         unique_values = dataframe[column].unique()
         return {value: dataframe[dataframe[column] == value].drop(columns=[column]) for value in unique_values}
+
+    @staticmethod
+    def align_timestamps(dataframes: Dict[str, pd.DataFrame]) -> Tuple[Dict[str, pd.DataFrame], Optional[pd.DatetimeIndex]]:
+        """
+        Align all dataframes to the reference index (from longest dataframe) 
+        and fill missing values with zeros.
+
+        :param dataframes: A dictionary of dataframes to align
+        :type dataframes: Dict[str, pd.DataFrame]
+        """
+        # Get reference time index from the longest dataframe
+        max_length = 0
+        reference_index: Optional[pd.DatetimeIndex] = None
+        
+        for df in dataframes.values():
+            if len(df.index) > max_length:
+                if isinstance(df.index, pd.DatetimeIndex):
+                    max_length = len(df.index)
+                    reference_index = df.index
+        
+        # Reindex all dataframes to match reference and fill with zeros
+        for name in dataframes:
+            dataframes[name] = dataframes[name].reindex(reference_index, fill_value=0)
+        
+        return dataframes, reference_index
