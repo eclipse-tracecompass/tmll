@@ -93,14 +93,7 @@ class Experiment(Trace):
             # Check type
             type_match = matches_keywords(output.type, types or [], match_any)
             
-            # Combine all criteria based on match_any
-            if match_any:
-                # OR: include if any criteria matches
-                if keywords_match or type_match:
-                    matches.append(output)
-            else:
-                # AND: include only if all criteria match
-                if keywords_match and type_match:
-                    matches.append(output)
+            if keywords_match and type_match:
+                matches.append(output)
         
         return sorted(matches, key=lambda x: x.name)
