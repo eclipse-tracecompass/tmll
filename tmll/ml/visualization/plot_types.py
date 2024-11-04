@@ -32,6 +32,8 @@ class TimeSeriesPlot(PlotStrategy):
         :type alpha: float, optional
         :param is_top: Whether to place this plot on top of others. Default is False.
         :type is_top: bool, optional
+        :param marker: The marker style for the plot. Default is None.
+        :type marker: str, optional
         :return: None
         """
         label = kwargs.get('label', None)
@@ -41,12 +43,13 @@ class TimeSeriesPlot(PlotStrategy):
         color = kwargs.get('color', 'blue')
         alpha = kwargs.get('alpha', 1.0)
         is_top = kwargs.get('is_top', False)
+        marker = kwargs.get('marker', None)
         
         zorder = 0
         if is_top:
             zorder = max([line.get_zorder() for line in ax.lines]) + 1
         
-        sns.lineplot(data=data, x=x, y=y, hue=hue, ax=ax, color=color, alpha=alpha, label=label, zorder=zorder)
+        sns.lineplot(data=data, x=x, y=y, hue=hue, ax=ax, color=color, alpha=alpha, label=label, marker=marker, zorder=zorder)
         self.set_title_and_labels(ax, f"Time Series of {y}", str(x), str(y))
 
 
@@ -75,6 +78,10 @@ class ScatterPlot(PlotStrategy):
         :type alpha: float, optional
         :param is_top: Whether to place this plot on top of others. Default is False.
         :type is_top: bool, optional
+        :param marker: The marker style for the plot. Default is '*'.
+        :type marker: str, optional
+        :param s: The size of the marker. Default is 1.
+        :type s: int, optional
         :return: None
         """
         x = kwargs.get('x')
@@ -84,12 +91,14 @@ class ScatterPlot(PlotStrategy):
         label = kwargs.get('label', None)
         alpha = kwargs.get('alpha', 1.0)
         is_top = kwargs.get('is_top', False)
+        marker = kwargs.get('marker', '*')
+        s = kwargs.get('s', 1)
         
         zorder = 0
         if is_top:
             zorder = max([scatter.get_zorder() for scatter in ax.collections]) + 1
         
-        sns.scatterplot(data=data, x=x, y=y, ax=ax, color=color, hue=hue, label=label, alpha=alpha, zorder=zorder)
+        sns.scatterplot(data=data, x=x, y=y, ax=ax, color=color, hue=hue, label=label, alpha=alpha, marker=marker, s=s, zorder=zorder)
         self.set_title_and_labels(ax, f"Scatter Plot of {y} vs {x}", str(x), str(y))
 
 
