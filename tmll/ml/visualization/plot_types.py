@@ -227,6 +227,8 @@ class HeatmapPlot(PlotStrategy):
         :type ax: Axes
         :param data: The data to plot.
         :type data: Any
+        :param mask: The mask for the heatmap. Default is None.
+        :type mask: Any, optional
         :param cmap: The name of the colormap. Default is 'viridis'.
         :type cmap: str, optional
         :param annot: Whether to annotate the heatmap. Default is True.
@@ -241,6 +243,7 @@ class HeatmapPlot(PlotStrategy):
         :type is_top: bool, optional
         :return: None
         """
+        mask = kwargs.get('mask', None)
         cmap = kwargs.get('cmap', 'viridis')
         annot = kwargs.get('annot', True)
         fmt = kwargs.get('fmt', '.2f')
@@ -252,7 +255,7 @@ class HeatmapPlot(PlotStrategy):
         if is_top:
             zorder = max([im.get_zorder() for im in ax.images]) + 1
         
-        sns.heatmap(data, ax=ax, cmap=cmap, annot=annot, fmt=fmt, alpha=alpha, zorder=zorder)
+        sns.heatmap(data, ax=ax, cmap=cmap, annot=annot, fmt=fmt, alpha=alpha, zorder=zorder, mask=mask)
         if label:
             ax.collections[0].set_label(label)
         self.set_title_and_labels(ax, "Correlation Heatmap", "", "")
