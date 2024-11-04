@@ -52,9 +52,6 @@ class BaseModule(ABC):
         # Create a new figure and axis
         fig, ax = plt.subplots(figsize=plot_size, dpi=kwargs.get('dpi', 100))
 
-        # Set the default x-axis and y-axis limits
-        x_min, x_max = None, None
-
         # Plot each plot
         for plot_info in plots:
             plot_type = plot_info['plot_type']
@@ -63,17 +60,6 @@ class BaseModule(ABC):
             # Update the plot_info with the additional keyword arguments
             # These parameters will be used in each plot (if required)
             kwargs.update({k: v for k, v in plot_info.items() if k not in ['plot_type', 'data']})
-
-            # Update the x-axis limits
-            if data is not None and kwargs.get('x') is not None:
-                x_data = data[kwargs.get('x')]
-                curr_min = x_data.min()
-                curr_max = x_data.max()
-
-                if x_min is None or curr_min < x_min:
-                    x_min = curr_min
-                if x_max is None or curr_max > x_max:
-                    x_max = curr_max
 
             # Create the plot
             plot_strategy = PlotFactory.create_plot(plot_type)
@@ -91,10 +77,6 @@ class BaseModule(ABC):
             ax.legend(by_label.values(), by_label.keys(), loc='upper left', bbox_to_anchor=(1.025, 1), borderaxespad=0.)
         else:
             ax.get_legend().remove()
-            
-        # Set the x-axis limits
-        if x_min is not None and x_max is not None:
-            ax.set_xlim(x_min, x_max)
 
         # Display the plot
         plt.tight_layout()
