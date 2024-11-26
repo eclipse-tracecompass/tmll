@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 from tmll.ml.preprocess.normalizer import Normalizer
@@ -147,3 +147,28 @@ class DataPreprocessor:
             dataframes[name] = dataframes[name].reindex(reference_index, fill_value=0)
         
         return dataframes, reference_index
+    
+    @staticmethod
+    def combine_dataframes(dataframes: List[pd.DataFrame]) -> pd.DataFrame:
+        """
+        Combine the DataFrames into a single DataFrame with a common index.
+
+        :param dataframes: The list of DataFrames to combine
+        :type dataframes: List[pd.DataFrame]
+        :return: The combined DataFrame
+        :rtype: pd.DataFrame
+        """
+        combined_data = {}
+        common_index = None
+        
+        for df in dataframes:
+            if len(df.columns) != 1:
+                continue
+
+            if common_index is None:
+                common_index = df.index
+
+            series = df.iloc[:, 0]
+            combined_data[df.columns[0]] = series
+            
+        return pd.DataFrame(combined_data, index=common_index)
