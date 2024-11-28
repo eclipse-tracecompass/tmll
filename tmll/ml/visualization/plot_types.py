@@ -34,6 +34,8 @@ class TimeSeriesPlot(PlotStrategy):
         :type is_top: bool, optional
         :param marker: The marker style for the plot. Default is None.
         :type marker: str, optional
+        :param linewidth: The width of the line. Default is 1.
+        :type linewidth: int, optional
         :return: None
         """
         label = kwargs.get('label', None)
@@ -44,12 +46,13 @@ class TimeSeriesPlot(PlotStrategy):
         alpha = kwargs.get('alpha', 1.0)
         is_top = kwargs.get('is_top', False)
         marker = kwargs.get('marker', None)
+        linewidth = kwargs.get('linewidth', 1)
         
         zorder = 0
         if is_top:
             zorder = max([line.get_zorder() for line in ax.lines]) + 1
         
-        sns.lineplot(data=data, x=x, y=y, hue=hue, ax=ax, color=color, alpha=alpha, label=label, marker=marker, zorder=zorder)
+        sns.lineplot(data=data, x=x, y=y, hue=hue, ax=ax, color=color, alpha=alpha, label=label, marker=marker, zorder=zorder, linewidth=linewidth)
         self.set_title_and_labels(ax, f"Time Series of {y}", str(x), str(y))
 
 
