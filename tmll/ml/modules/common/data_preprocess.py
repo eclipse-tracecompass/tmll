@@ -172,3 +172,15 @@ class DataPreprocessor:
             combined_data[df.columns[0]] = series
             
         return pd.DataFrame(combined_data, index=common_index)
+    
+    @staticmethod
+    def remove_minimum(dataframe: pd.DataFrame) -> pd.DataFrame:
+        """
+        Remove the minimum value from each column in the DataFrame.
+
+        :param dataframe: The DataFrame to process
+        :type dataframe: pd.DataFrame
+        :return: The DataFrame with the minimum value removed from each column
+        :rtype: pd.DataFrame
+        """
+        return dataframe[dataframe > dataframe.min()]
