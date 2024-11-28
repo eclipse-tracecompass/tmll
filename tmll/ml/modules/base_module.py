@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from tmll.common.services.logger import Logger
 from tmll.ml.visualization.plot_factory import PlotFactory
 from tmll.common.models.experiment import Experiment
+from tmll.ml.visualization.utils import PlotUtils
 from tmll.tmll_client import TMLLClient
 
 class BaseModule(ABC):
@@ -57,13 +58,9 @@ class BaseModule(ABC):
             plot_type = plot_info['plot_type']
             data = plot_info['data']
 
-            # Update the plot_info with the additional keyword arguments
-            # These parameters will be used in each plot (if required)
-            kwargs.update({k: v for k, v in plot_info.items() if k not in ['plot_type', 'data']})
-
             # Create the plot
             plot_strategy = PlotFactory.create_plot(plot_type)
-            plot_strategy.plot(ax, data, **kwargs)
+            plot_strategy.plot(ax, data, **{k: v for k, v in plot_info.items() if k not in ['plot_type', 'data']})
 
         # Set the title, x-axis label, and y-axis label of the plot
         ax.set_title(kwargs.get('fig_title', ''))
@@ -74,7 +71,7 @@ class BaseModule(ABC):
         if kwargs.get('legend', True):
             handles, labels = plt.gca().get_legend_handles_labels()
             by_label = dict(zip(labels, handles))   
-            ax.legend(by_label.values(), by_label.keys(), loc='upper left', bbox_to_anchor=(1.025, 1), borderaxespad=0.)
+            PlotUtils.set_standard_legend_style(ax, by_label.values(), by_label.keys(), title=kwargs.get('legend_title', None))
         else:
             ax.get_legend().remove()
 
