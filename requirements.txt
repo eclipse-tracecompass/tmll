@@ -9,3 +9,4 @@ tqdm==4.66.5
 matplotlib==3.9.2
 seaborn==0.13.2
 statsmodels==0.14.3
+ruptures==1.1.9
