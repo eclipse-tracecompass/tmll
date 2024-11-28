@@ -176,11 +176,11 @@ class DataPreprocessor:
     @staticmethod
     def remove_minimum(dataframe: pd.DataFrame) -> pd.DataFrame:
         """
-        Remove the minimum value from each column in the DataFrame.
+        Remove the minimum value from the first column in the DataFrame (e.g., to remove outliers).
 
         :param dataframe: The DataFrame to process
         :type dataframe: pd.DataFrame
         :return: The DataFrame with the minimum value removed from each column
         :rtype: pd.DataFrame
         """
-        return dataframe[dataframe > dataframe.min()]
+        return dataframe[dataframe.iloc[:, 0] != dataframe.iloc[:, 0].min()]

@@ -80,8 +80,8 @@ class ChangePointAnalysis(BaseModule):
             if shortened not in self.dataframes:
                 df = self.data_preprocessor.normalize(output_data)
                 df = self.data_preprocessor.convert_to_datetime(df)
-                df = self.data_preprocessor.resample(df, frequency='1ms')
                 df = self.data_preprocessor.remove_minimum(df)
+                df = self.data_preprocessor.resample(df, frequency='1ms')
                 self.dataframes[shortened] = df
 
         self.dataframes = {
