@@ -524,6 +524,8 @@ class ChangePointAnalysis(BaseModule):
                     metric_result = results['single'][metric]
                     for cp, mag in zip(metric_result['change_points'], metric_result['magnitudes']):
                         change_time = self.combined_df.index[cp]
+
+                        # Add change point to plot
                         plots.append({
                             'plot_type': 'vline',
                             'data': None,
@@ -533,6 +535,15 @@ class ChangePointAnalysis(BaseModule):
                             'linestyle': '--',
                             'alpha': 0.75,
                             'linewidth': 1.5
+                        })
+                        
+                        # Add annotation to plot
+                        plots.append({
+                            'plot_type': 'annotate',
+                            'data': None,
+                            'xy':change_time,
+                            'text': f'Δ={mag:.2f}',
+                            'color': 'red'
                         })
 
                 self._plot(plots=plots, plot_size=(15, 3), dpi=300,
@@ -586,6 +597,15 @@ class ChangePointAnalysis(BaseModule):
                     'linestyle': '--',
                     'alpha': 0.75,
                     'linewidth': 1.5
+                })
+
+                # Add annotation to plot
+                plots.append({
+                    'plot_type': 'annotate',
+                    'data': None,
+                    'xy':change_time,
+                    'text': f'Δ={mag:.2f}',
+                    'color': 'red'
                 })
 
             self._plot(plots=plots, plot_size=(15, 3), dpi=300,
