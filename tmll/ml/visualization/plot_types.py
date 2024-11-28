@@ -468,3 +468,52 @@ class HLinePlot(PlotStrategy):
 
         ax.axhline(y=y, color=color, alpha=alpha, zorder=zorder, label=label, linestyle=linestyle)
         self.set_title_and_labels(ax, "Horizontal Line Plot", "", "")
+
+class AnnotatePlot(PlotStrategy):
+    """A concrete class to implement the annotation plot strategy."""
+
+    def plot(self, ax: Axes, data: Any, **kwargs) -> None:
+        """
+        Plot the annotation on the given axes (ax.annotate).
+
+        :param ax: The axes to plot the data.
+        :type ax: Axes
+        :param data: The data to plot (not used in AnnotatePlot, but kept for consistency).
+        :type data: Any
+        :param text: The text to annotate. Default is 'Annotation'.
+        :type text: str, optional
+        :param xy: The position of the annotation (x, y). Default is (0, ax.get_ylim()[1] * 0.9).
+        :type xy: Tuple[float, float], optional
+        :param xytext: The position of the text (x, y). Default is (5, 0).
+        :type xytext: Tuple[float, float], optional
+        :param textcoords: The text coordinates. Default is 'offset points'.
+        :type textcoords: str, optional
+        :param rotation: The rotation of the text. Default is 0.
+        :type rotation: float, optional
+        :param verticalalignment: The vertical alignment of the text. Default is 'bottom'.
+        :type verticalalignment: str, optional
+        :param color: The color of the text. Default is 'black'.
+        :type color: str, optional
+        :param alpha: The transparency of the text. Default is 1.0.
+        :type alpha: float, optional
+        :param is_top: Whether to place this plot on top of others. Default is False.
+        :type is_top: bool, optional
+        :return: None
+        """
+        text = kwargs.get('text', 'Annotation')
+        xy = (kwargs.get('xy', 0), ax.get_ylim()[1] * 0.9)
+        xytext = kwargs.get('xytext', (5, 0))
+        textcoords = kwargs.get('textcoords', 'offset points')
+        rotation = kwargs.get('rotation', 0)
+        verticalalignment = kwargs.get('verticalalignment', 'bottom')
+        color = kwargs.get('color', 'black')
+        alpha = kwargs.get('alpha', 1.0)
+        is_top = kwargs.get('is_top', False)
+
+        zorder = 0
+        if is_top:
+            zorder = max([text.get_zorder() for text in ax.texts]) + 1
+
+        ax.annotate(text, xy=xy, xytext=xytext, textcoords=textcoords, rotation=rotation,
+                    verticalalignment=verticalalignment, color=color, alpha=alpha, zorder=zorder)
+        self.set_title_and_labels(ax, "Annotation Plot", "", "")

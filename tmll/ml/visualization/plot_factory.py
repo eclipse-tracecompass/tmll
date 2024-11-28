@@ -30,6 +30,7 @@ class PlotFactory:
             'span': SpanPlot(),
             'vline': VLinePlot(),
             'hline': HLinePlot(),
+            'annotate': AnnotatePlot(),
         }
 
         return plot_types.get(plot_type, TimeSeriesPlot())
