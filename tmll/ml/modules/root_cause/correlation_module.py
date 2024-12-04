@@ -44,7 +44,7 @@ class CorrelationAnalysis(BaseModule):
         """
         self.dataframes.clear()
 
-        data = self.data_fetcher.fetch_data(
+        data, outputs = self.data_fetcher.fetch_data(
             experiment=self.experiment, target_outputs=outputs)
         if data is None:
             self.logger.error("No data fetched")

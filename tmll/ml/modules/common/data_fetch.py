@@ -1,5 +1,5 @@
 import pandas as pd
-from typing import List, Dict, Optional, Union, cast
+from typing import List, Dict, Optional, Tuple, Union, cast
 
 from tmll.common.models.experiment import Experiment
 from tmll.common.models.output import Output
@@ -12,7 +12,7 @@ class DataFetcher:
         self.logger = client.logger
 
     def fetch_data(self, experiment: Experiment,
-                   target_outputs: Optional[List[Output]] = None) -> Union[None, Dict[str, pd.DataFrame]]:
+                   target_outputs: Optional[List[Output]] = None) -> Tuple[Optional[Dict[str, pd.DataFrame]], Optional[List[Output]]]:
         """
         Fetch and process data for the given outputs.
 
@@ -22,6 +22,8 @@ class DataFetcher:
         :type target_outputs: Optional[List[Output]]
         :param force_reload: Whether to force reload the data
         :type force_reload: bool
+        :return: The fetched data and the outputs
+        :rtype: Tuple[Optional[Dict[str, pd.DataFrame]], Optional[List[Output]]]
         """
         total_outputs = None
         custom_output_ids = [output.id for output in target_outputs] if target_outputs else None
@@ -29,7 +31,7 @@ class DataFetcher:
 
         if not total_outputs:
             self.logger.error("No outputs fetched")
-            return None
+            return None, []
 
         if not target_outputs:
             target_outputs = [cast(Output, output["output"]) for output in total_outputs]
@@ -40,7 +42,7 @@ class DataFetcher:
                                 target_outputs=target_outputs)
         if not data:
             self.logger.error("No data fetched")
-            return None
+            return None, None
 
         dataframes = {}
         for output in target_outputs:
@@ -62,11 +64,11 @@ class DataFetcher:
             elif isinstance(data[output.id], pd.DataFrame):
                 dataframes[output.id] = data[output.id]
 
-        return dataframes
+        return dataframes, [cast(Output, output["output"]) for output in total_outputs]
     
     def _fetch_data(self, experiment: Experiment,
                     experiment_outputs: List[Dict[str, Output | Tree]],
-                    target_outputs: List[Output]) -> Union[None, Dict[str, Union[pd.DataFrame, Dict[str, pd.DataFrame]]]]:
+                    target_outputs: List[Output]) -> Optional[Dict[str, Union[pd.DataFrame, Dict[str, pd.DataFrame]]]]:
         """
         Fetch the data from the given outputs.
 
@@ -78,6 +80,8 @@ class DataFetcher:
         :type target_outputs: List[Output]
         :param force_reload: Whether to force reload the data
         :type force_reload: bool
+        :return: The fetched data
+        :rtype: Optional[Dict[str, Union[pd.DataFrame, Dict[str, pd.DataFrame]]]
         """
         custom_output_ids = [output.id for output in target_outputs]
         return self.client.fetch_data(experiment=experiment,
