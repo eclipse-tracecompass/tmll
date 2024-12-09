@@ -43,7 +43,15 @@ class DataPreprocessor:
         :return: The DataFrame with the timestamp column converted to datetime
         :rtype: pd.DataFrame
         """
-        dataframe[timestamp_column] = pd.to_datetime(dataframe[timestamp_column])
+        if timestamp_column not in dataframe.columns and 'Timestamp ns' in list(dataframe.columns):
+            dataframe = dataframe.rename(columns={'Timestamp ns': timestamp_column})
+            dataframe[timestamp_column] = dataframe[timestamp_column].astype(float) / 1e9
+            dataframe[timestamp_column] = pd.to_datetime(dataframe[timestamp_column], unit='s')
+        elif timestamp_column in dataframe.columns:
+            dataframe[timestamp_column] = pd.to_datetime(dataframe[timestamp_column])
+        else:
+            return dataframe # Return the original DataFrame if the timestamp column does not exist
+        
         if set_index:
             dataframe.set_index(timestamp_column, inplace=True)
         return dataframe
