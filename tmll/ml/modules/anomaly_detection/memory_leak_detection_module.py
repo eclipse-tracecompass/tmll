@@ -95,7 +95,7 @@ class MemoryLeakDetection(BaseModule):
         data, outputs = self.data_fetcher.fetch_data(
             experiment=self.experiment,
             target_outputs=self.BASE_OUTPUTS,
-            table_line_column_ids=[4, 5, 17] # Column IDs for the Events Table (Event type, Contents, Timestamp ns)
+            table_line_column_ids=[4, 5, 17]  # Column IDs for the Events Table (Event type, Contents, Timestamp ns)
         )
 
         if data is None:
@@ -194,43 +194,36 @@ class MemoryLeakDetection(BaseModule):
             return self.ptr_lifecycle
 
         events_df = self.dataframes['Events Table']
-        ptr_status = {}
-        leak_records = []
 
-        for idx, row in events_df.iterrows():
-            ptr = row['ptr']
-            event_type = row['event_category']
+        # Separate allocations and deallocations
+        allocations = events_df[events_df['event_category'] == 'allocation']
+        deallocations = events_df[events_df['event_category'] == 'deallocation']
 
-            if event_type == 'allocation':
-                if ptr not in ptr_status:
-                    ptr_status[ptr] = {
-                        'allocation_time': idx,
-                        'allocation_size': row['allocation_size']
-                    }
-            elif event_type == 'deallocation':
-                if ptr in ptr_status:
-                    lifetime = (idx - ptr_status[ptr]['allocation_time']).total_seconds()
-                    leak_records.append({
-                        'ptr': ptr,
-                        'allocation_time': ptr_status[ptr]['allocation_time'],
-                        'deallocation_time': idx,
-                        'lifetime': lifetime,
-                        'size': ptr_status[ptr]['allocation_size']
-                    })
-                    del ptr_status[ptr]
+        # Create base allocation records
+        allocation_records = allocations.copy()
+        allocation_records['allocation_time'] = allocation_records.index
 
-        # Add remaining unfreed pointers
-        for ptr, info in ptr_status.items():
-            leak_records.append({
-                'ptr': ptr,
-                'allocation_time': info['allocation_time'],
-                'deallocation_time': None,
-                'lifetime': None,
-                'size': info['allocation_size']
-            })
+        # Check for duplicate allocations (potential corruption)
+        duplicate_allocs = allocation_records['ptr'].value_counts()
+        if any(duplicate_allocs > 1):
+            # Keep only the first allocation for duplicates
+            allocation_records = allocation_records.groupby('ptr').first().reset_index()
 
-        self.ptr_lifecycle = pd.DataFrame(leak_records)
+        # Merge with deallocations to get lifecycle
+        merged = pd.merge(
+            allocation_records,
+            deallocations[['ptr']].assign(deallocation_time=deallocations.index),
+            on='ptr',
+            how='left'
+        )
 
+        # Calculate lifetime
+        merged['lifetime'] = (merged['deallocation_time'] - merged['allocation_time']).dt.total_seconds()
+
+        # Rename size column
+        merged = merged.rename(columns={'allocation_size': 'size'})
+
+        self.ptr_lifecycle = merged
         return self.ptr_lifecycle
 
     def _analyze_memory_trend(self) -> Dict[str, Any]:
@@ -246,13 +239,16 @@ class MemoryLeakDetection(BaseModule):
 
         memory_df = self.dataframes['Memory Usage']
 
+        # Convert timestamps to seconds from start
+        time_seconds = (memory_df.index - memory_df.index[0]).total_seconds()
+
         # Calculate rolling statistics
         window_size = pd.Timedelta(self.window_size)
         rolling_mean = memory_df['Memory Usage'].rolling(window=window_size).mean()
         rolling_std = memory_df['Memory Usage'].rolling(window=window_size).std()
 
-        # Perform linear regression
-        slope, intercept, r_value, p_value, _ = stats.linregress(np.arange(len(memory_df)), memory_df['Memory Usage'].values)
+        # Perform linear regression with actual time intervals
+        slope, intercept, r_value, p_value, _ = stats.linregress(time_seconds, memory_df['Memory Usage'].values)
         slope = cast(float, slope)
         intercept = cast(float, intercept)
         r_value = cast(float, r_value)
@@ -288,19 +284,29 @@ class MemoryLeakDetection(BaseModule):
         events_df = self.dataframes['Events Table']
         allocation_events = events_df[events_df['event_category'] == 'allocation']
 
-        # Calculate allocation frequencies
-        allocation_freq = allocation_events.resample('1min').size()
+        # Check for null values in allocation size
+        null_sizes = allocation_events['allocation_size'].isnull().sum()
+        if null_sizes > 0:
+            self.logger.warning(
+                f"Found {null_sizes} allocations with null size. "
+                "This might indicate trace corruption or incomplete data."
+            )
 
-        # Analyze allocation sizes
-        allocation_sizes = allocation_events['allocation_size'].dropna()
+        # Calculate allocation frequencies
+        allocation_freq = allocation_events.resample(self.window_size).size()
+
+        # Analyze allocation sizes with null handling
+        allocation_sizes = allocation_events['allocation_size']
+        valid_sizes = allocation_sizes.dropna()
 
         return {
             'allocation_frequency': allocation_freq,
-            'mean_allocation_size': allocation_sizes.mean(),
-            'median_allocation_size': allocation_sizes.median(),
-            'size_std': allocation_sizes.std(),
+            'mean_allocation_size': valid_sizes.mean() if not valid_sizes.empty else 0,
+            'median_allocation_size': valid_sizes.median() if not valid_sizes.empty else 0,
+            'size_std': valid_sizes.std() if not valid_sizes.empty else 0,
             'total_allocations': len(allocation_events),
-            'unique_sizes': allocation_sizes.nunique()
+            'unique_sizes': valid_sizes.nunique() if not valid_sizes.empty else 0,
+            'null_size_count': null_sizes
         }
 
     def _calculate_memory_metrics(self, ptr_tracking: pd.DataFrame, memory_trend: Dict, allocation_patterns: Dict) -> MemoryMetrics:
@@ -335,11 +341,9 @@ class MemoryLeakDetection(BaseModule):
 
         # Calculate maximum continuous growth duration
         rolling_mean = memory_trend['rolling_mean']
-        growth_periods = (rolling_mean.diff() > 0).astype(int)
-        max_growth_duration = (
-            growth_periods.groupby((growth_periods != growth_periods.shift()).cumsum())
-            .sum().max() * pd.Timedelta('1min').total_seconds()
-        )
+        growth_periods = (rolling_mean.diff() > 0)
+        consecutive_periods = growth_periods.groupby((growth_periods != growth_periods.shift()).cumsum())
+        max_growth_duration = (consecutive_periods.apply(lambda x: (x.index[-1] - x.index[0]).total_seconds() if len(x) > 1 else 0).max())
 
         return MemoryMetrics(
             unreleased_allocations=unreleased,
@@ -371,11 +375,9 @@ class MemoryLeakDetection(BaseModule):
         :rtype: Tuple[MemoryLeakSeverity, float]
         """
         # Calculate base scores
-        slop_threshold = 0.5
-        fragmantation_threshold = 0.7
-        growth_score = min(1.0, metrics.leak_rate / slop_threshold)
+        growth_score = min(1.0, metrics.leak_rate / self.slope_threshold)
         unreleased_score = min(1.0, metrics.unreleased_allocations / metrics.total_allocations)
-        fragmentation_score = min(1.0, metrics.memory_fragmentation_score / fragmantation_threshold)
+        fragmentation_score = min(1.0, metrics.memory_fragmentation_score / self.fragmentation_threshold)
 
         # Weight the scores
         weighted_score = (
@@ -457,9 +459,7 @@ class MemoryLeakDetection(BaseModule):
         patterns = []
 
         if memory_trend['is_significant'] and memory_trend['slope'] > 0:
-            patterns.append(
-                f"Systematic memory growth detected: {memory_trend['growth_rate']:.2f} bytes/second"
-            )
+            patterns.append(f"Systematic memory growth detected: {self._convert_bytes(memory_trend['growth_rate'])}/second")
 
         if allocation_patterns['allocation_frequency'].std() > allocation_patterns['allocation_frequency'].mean():
             patterns.append("Irregular allocation pattern detected")
@@ -470,16 +470,52 @@ class MemoryLeakDetection(BaseModule):
         return patterns
 
     def _convert_bytes(self, size_in_bytes: float) -> str:
-        """Convert bytes to a human-readable string with appropriate units."""
+        """
+        Convert bytes to a human-readable string with appropriate units.
+
+        :param size_in_bytes: The size in bytes
+        :type size_in_bytes: float
+        :return: The size in human-readable format
+        :rtype: str
+        """
         units = ['B', 'KB', 'MB', 'GB', 'TB']
-        size = size_in_bytes
         unit_index = 0
 
-        while size >= 1024 and unit_index < len(units) - 1:
-            size /= 1024
+        while size_in_bytes >= 1024 and unit_index < len(units) - 1:
+            size_in_bytes /= 1024
             unit_index += 1
 
-        return f"{size:.2f} {units[unit_index]}"
+        return f"{size_in_bytes:.2f} {units[unit_index]}"
+
+    def _convert_time(self, time_in_seconds: float) -> str:
+        """
+        Convert seconds to a human-readable string with appropriate units.
+
+        :param time: The time in seconds
+        :type time: float
+        :return: The time in human-readable format
+        :rtype: str
+        """
+        units = ['s', 'm', 'h']
+        thresholds = [1, 60, 3600]
+        time = abs(time_in_seconds)
+
+        # If time is less than 1 second, convert to smaller units
+        if time < 1:
+            if time < 0.000001:  # nanoseconds
+                return f"{time * 1e9:.2f} ns"
+            elif time < 0.001:  # microseconds
+                return f"{time * 1e6:.2f} us"
+            else:  # milliseconds
+                return f"{time * 1000:.2f} ms"
+
+        # If time is greater than 1 second, convert to larger units
+        for i in range(len(units) - 1, -1, -1):
+            if time >= thresholds[i]:
+                converted_time = time / thresholds[i]
+                return f"{converted_time:.2f} {units[i]}"
+
+        return f"{time:.2f} s"
 
     def interpret(self, analysis_result: LeakAnalysisResult) -> None:
         """Interpret and display memory leak analysis results using the DocumentGenerator."""
@@ -494,9 +530,9 @@ class MemoryLeakDetection(BaseModule):
         DocumentGenerator.metrics_group("Memory Metrics", {
             "Unreleased Allocations": analysis_result.metrics.unreleased_allocations,
             "Total Allocations": analysis_result.metrics.total_allocations,
-            "Leak Rate": f"{analysis_result.metrics.leak_rate:.2f} bytes/second",
-            "Average Allocation Size": f"{analysis_result.metrics.avg_allocation_size:.2f} bytes",
-            "Max Continuous Growth": f"{analysis_result.metrics.max_continuous_growth_duration:.2f} seconds",
+            "Leak Rate": f"{self._convert_bytes(analysis_result.metrics.leak_rate)}/second",
+            "Average Allocation Size": f"{self._convert_bytes(analysis_result.metrics.avg_allocation_size)}",
+            "Max Continuous Growth": f"{self._convert_time(analysis_result.metrics.max_continuous_growth_duration)}",
             "Memory Fragmentation": f"{analysis_result.metrics.memory_fragmentation_score:.2f}"
         })
 
@@ -540,9 +576,9 @@ class MemoryLeakDetection(BaseModule):
         lifetimes = ptr_tracking['lifetime'].dropna()
         if not lifetimes.empty:
             DocumentGenerator.metrics_group("Pointer Lifetime Statistics", {
-                "Average Lifetime": f"{lifetimes.mean():.2f} seconds",
-                "Median Lifetime": f"{lifetimes.median():.2f} seconds",
-                "Maximum Lifetime": f"{lifetimes.max():.2f} seconds"
+                "Average Lifetime": f"{self._convert_time(lifetimes.mean())}",
+                "Median Lifetime": f"{self._convert_time(lifetimes.median())}",
+                "Maximum Lifetime": f"{self._convert_time(lifetimes.max())}"
             })
 
     def plot(self, analysis_result: LeakAnalysisResult) -> None:
@@ -558,12 +594,9 @@ class MemoryLeakDetection(BaseModule):
         deallocation_events = events_df[events_df['event_category'] == 'deallocation']
         ptr_tracking = self._track_pointer_lifecycle()
         lifetimes = ptr_tracking['lifetime'].dropna()
+        time_range = (memory_df.index[-1] - memory_df.index[0]).total_seconds()
+        points_per_window = max(len(memory_df) // 50, 1)
 
-        # Perform linear regression on memory usage
-        slope = analysis_result.metrics.regression_slope
-        intercept = analysis_result.metrics.regression_intercept
-
-        # Use a standard color palette
         colors = plt.get_cmap('tab10')
 
         # Plot 1: Memory Usage Over Time
@@ -579,7 +612,7 @@ class MemoryLeakDetection(BaseModule):
             },
             {
                 "plot_type": "time_series",
-                "data": memory_df.rolling(window=self.window_size).mean(),
+                "data": memory_df.rolling(window=points_per_window, min_periods=1, center=True).mean(),
                 "y": "Memory Usage",
                 "label": "Rolling Mean",
                 "alpha": 0.9,
@@ -588,10 +621,15 @@ class MemoryLeakDetection(BaseModule):
             },
             {
                 "plot_type": "time_series",
-                "data": pd.DataFrame({"timestamp": memory_df.index, "trend_line": slope * np.arange(len(memory_df)) + intercept}),
+                "data": pd.DataFrame({
+                    "timestamp": memory_df.index,
+                    "trend_line": analysis_result.metrics.regression_slope *
+                    (memory_df.index - memory_df.index[0]).total_seconds() +
+                    analysis_result.metrics.regression_intercept
+                }),
                 "x": "timestamp",
                 "y": "trend_line",
-                "label": f"Trend (slope: {slope:.2f})",
+                "label": f"Trend (slope: {analysis_result.metrics.regression_slope:.2f})",
                 "color": colors(2),
                 "linestyle": "--",
                 "alpha": 0.8,
@@ -602,10 +640,14 @@ class MemoryLeakDetection(BaseModule):
                    fig_xlabel="Time", fig_ylabel="Memory Usage (bytes)", grid=True)
 
         # Plot 2: Allocation Patterns
+        resample_window = f"{round(time_range * 10, 3)}us"
+        alloc_series = allocation_events.groupby(pd.Grouper(freq=resample_window)).size()
+        dealloc_series = deallocation_events.groupby(pd.Grouper(freq=resample_window)).size()
+
         plots = [
             {
                 "plot_type": "time_series",
-                "data": allocation_events.resample(self.window_size).size().to_frame(name='Allocations'),
+                "data": alloc_series.to_frame(name='Allocations'),
                 "y": "Allocations",
                 "label": "Allocations",
                 "alpha": 0.8,
@@ -614,7 +656,7 @@ class MemoryLeakDetection(BaseModule):
             },
             {
                 "plot_type": "time_series",
-                "data": deallocation_events.resample(self.window_size).size().to_frame(name='Deallocations'),
+                "data": dealloc_series.to_frame(name='Deallocations'),
                 "y": "Deallocations",
                 "label": "Deallocations",
                 "alpha": 0.8,
