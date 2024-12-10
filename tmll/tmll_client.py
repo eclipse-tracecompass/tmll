@@ -68,7 +68,7 @@ class TMLLClient:
                 self.logger.error(
                     "Failed to connect to the TSP server. Please make sure that the TSP server is running. If you want to install the TSP server, set the 'install_tsp_server' parameter to True.")
                 return
-            
+
             self.logger.warning("TSP server is not running. Trying to run the TSP server, and if not installed, install it.")
 
             tsp_installer = TSPInstaller()
@@ -167,7 +167,7 @@ class TMLLClient:
             experiment.assign_outputs(self._fetch_outputs(experiment))
 
         return experiment
-    
+
     def _fetch_outputs(self, experiment: Experiment) -> List[Output]:
         """
         Fetch the outputs of the experiment.
@@ -192,7 +192,7 @@ class TMLLClient:
         self.logger.info("Outputs are fetched successfully.")
 
         return fetched_outputs
-    
+
     def fetch_outputs_with_tree(self, experiment: Experiment, custom_output_ids: Optional[List[str]] = None) -> Union[None, List[Dict[str, Union[Output, Tree]]]]:
         """
         Fetch the outputs of the experiment.
@@ -204,7 +204,7 @@ class TMLLClient:
         :param force_reload: Flag to force reload the outputs
         :type force_reload: bool
         """
-        
+
         if experiment is None:
             self.logger.error("Experiment is not loaded. Please load the experiment first by calling the 'create_experiment' method.")
             return None
@@ -243,7 +243,7 @@ class TMLLClient:
                         if response.status_code != 200:
                             self.logger.error(f"Failed to fetch time graph tree. Error: {response.status_text}")
                             break
-                        
+
                         # Wait until the model is completely fetched (i.e., status is COMPLETED)
                         if response.model.status.name == ResponseStatus.COMPLETED.name:
                             break
@@ -256,7 +256,7 @@ class TMLLClient:
                         if response.status_code != 200:
                             self.logger.error(f"Failed to fetch XY tree. Error: {response.status_text}")
                             break
-                        
+
                         # Wait until the model is completely fetched (i.e., status is COMPLETED)
                         if response.model.status.name == ResponseStatus.COMPLETED.name:
                             break
@@ -298,7 +298,7 @@ class TMLLClient:
         :return: Dictionary of processed DataFrames
         :rtype: Union[None, Dict[str, Union[pd.DataFrame, Dict[str, pd.DataFrame]]]]
         """
-        
+
         # Check if the experiment is loaded
         if experiment is None:
             self.logger.error("Experiment is not loaded. Please load the experiment first.")
@@ -429,7 +429,7 @@ class TMLLClient:
                         # Add the dataset to the datasets dictionary
                         if o_output.id not in datasets:
                             datasets[o_output.id] = pd.DataFrame()
-                        
+
                         datasets[o_output.id] = pd.concat([datasets[o_output.id], dataset])
 
                         # Update the time_range_start for the next iteration
@@ -453,10 +453,11 @@ class TMLLClient:
                     # We keep the initial columns to use them in the DataFrame creation
                     initial_table_columns = []
 
-                    start_index = int(kwargs.get("table_line_start_index", 0)) # Start index of the table data. Default is 0 (i.e., the first row)
-                    line_count = int(kwargs.get("table_line_count", 65536)) # 65536 is the maximum value that the TSP server accepts
-                    column_ids = list(map(int, kwargs.get("table_line_column_ids", []))) # Which columns to fetch from the table
-                    search_direction = kwargs.get("table_line_search_direction", "NEXT") # Search direction for the table data (i.e., NEXT or PREVIOUS)
+                    start_index = int(kwargs.get("table_line_start_index", 0))  # Start index of the table data. Default is 0 (i.e., the first row)
+                    line_count = int(kwargs.get("table_line_count", 65536))  # 65536 is the maximum value that the TSP server accepts
+                    column_ids = list(map(int, kwargs.get("table_line_column_ids", [])))  # Which columns to fetch from the table
+                    # Search direction for the table data (i.e., NEXT or PREVIOUS)
+                    search_direction = kwargs.get("table_line_search_direction", "NEXT")
                     while True:
                         # Prepare the parameters for the TSP server
                         parameters = {
@@ -469,7 +470,8 @@ class TMLLClient:
                         }
 
                         # Send a request to the TSP server to fetch the virtual table data
-                        table_request = self.tsp_client.fetch_virtual_table_lines(exp_uuid=experiment.uuid, output_id=o_output.id, parameters=parameters)
+                        table_request = self.tsp_client.fetch_virtual_table_lines(
+                            exp_uuid=experiment.uuid, output_id=o_output.id, parameters=parameters)
 
                         # If the request is not successful or the table data is None, break the loop
                         if table_request.status_code != 200 or table_request.model.model is None:
@@ -492,17 +494,18 @@ class TMLLClient:
                             break
 
                         # Convert the table rows to a DataFrame
-                        row_data = pd.DataFrame.from_dict({row.index: row.values for row in table.rows}, orient="index", columns=initial_table_columns)
+                        row_data = pd.DataFrame([row.values for row in table.rows], columns=initial_table_columns)
 
                         # If the "separate_columns" parameter is True, extract the features from the columns
                         # For example, if the column contains "key=value" pairs, extract the key and value as separate columns
                         separate_columns = kwargs.get("separate_columns", False)
                         if separate_columns:
-                            row_data = self._extract_features_from_columns(row_data)
+                            processor = TableProcessor()
+                            row_data = processor.extract_features_from_columns(row_data)
 
                         # Concatenate the row data to the DataFrame of the output
                         datasets[o_output.id] = pd.concat([datasets[o_output.id], row_data], ignore_index=True)
-                        
+
                         # Update the start index for the next iteration (i.e., next batch of data)
                         start_index += line_count
                 case _:
@@ -514,108 +517,111 @@ class TMLLClient:
         self.logger.info("All data fetched successfully.")
 
         return datasets
-    
-    def _extract_features_from_columns(self, dataframe: pd.DataFrame) -> pd.DataFrame:
-        """
-        Extract features from the columns of the DataFrame.
-        For instance, if the column contains "key=value" pairs, extract the key and value as separate columns.
-        Example:
-            - Input: The "Col" column contains "key1=value1, key2=value2, key3=value3" pairs.
-            - Output: The "Col_key1", "Col_key2", and "Col_key3" columns contain "value1", "value2", and "value3" values, respectively.
 
-        :param dataframe: DataFrame to extract features from the columns
+
+class TableProcessor:
+    """
+    TableProcessor class is used to process the table data.
+    Using parallel processing, it extracts features from the columns of the table data efficiently.
+    """
+
+    def __init__(self):
+        self.key_cleanup_pattern = re.compile(r'[^\w\s]')
+
+    def _parse_value(self, value_str: str) -> str:
+        """
+        Parse the value string and return the value.
+
+        :param value_str: Value string to parse
+        :type value_str: str
+        :return: Parsed value
+        :rtype: str
+        """
+        if not isinstance(value_str, str):
+            return value_str
+        value_str = value_str.strip('[]')
+        if '=' in value_str and not value_str.startswith(('[', '{')):
+            return ','.join(part.strip() for part in value_str.split(',') if '=' in part)
+        return value_str
+
+    def _process_part(self, part: str, base_column: str = '') -> Dict[str, str]:
+        """
+        Process the part of the column and return the extracted features.
+
+        :param part: Part of the column to process
+        :type part: str
+        :param base_column: Base column name
+        :type base_column: str
+        :return: Extracted features
+        :rtype: Dict[str, str]
+        """
+        if not isinstance(part, str) or '=' not in part:
+            return {}
+
+        try:
+            key, value = part.split('=', 1)
+        except ValueError:
+            return {}
+
+        key = self.key_cleanup_pattern.sub('', key).strip()
+        col_name = f"{base_column}_{key}" if base_column else key
+
+        if isinstance(value, str) and value.startswith('['):
+            parts = value.strip('[]').split(',')
+            result = {}
+            for p in parts:
+                if '=' in p:
+                    result.update(self._process_part(p.strip(), col_name))
+            return result
+        return {col_name: self._parse_value(value)}
+
+    def extract_features_from_columns(self, dataframe: pd.DataFrame) -> pd.DataFrame:
+        """
+        Extract features from the columns of the table data.
+
+        :param dataframe: DataFrame to process
         :type dataframe: pd.DataFrame
-        :return: DataFrame with extracted features
+        :return: Processed DataFrame
         :rtype: pd.DataFrame
         """
-        def parse_value(value_str: str) -> str:
-            """Parse the value string."""
-            value_str = value_str.strip('[]')
-            if '=' in value_str and not value_str.startswith(('[', '{')):
-                parts = value_str.split(',')
-                parsed_parts = []
-                for part in parts:
-                    if '=' in part:
-                        parsed_parts.append(part.strip())
-                return ','.join(parsed_parts) if parsed_parts else value_str
-            return value_str
+        if len(dataframe) == 0:
+            return dataframe
 
-        def process_part(part: str, base_column: str = '') -> dict:
-            """Process a part of the row."""
-            result = {}
-            
-            if '=' not in part:
-                return result
-                
-            try:
-                key, value = part.split('=', 1)
-            except ValueError:
-                print(f"Warning: Couldn't split '{part}'")
-                return result
-                
-            key = re.sub(r'[^\w\s]', '', key).strip()
-            col_name = f"{base_column}_{key}" if base_column else key
-            
-            if value.startswith('['):
-                nested_parts = []
-                current_part = ''
-                bracket_count = 0
-                
-                for char in value[1:-1] if value.endswith(']') else value[1:]:
-                    if char == '[':
-                        bracket_count += 1
-                    elif char == ']':
-                        bracket_count -= 1
-                    elif char == ',' and bracket_count == 0:
-                        if current_part.strip():
-                            nested_parts.append(current_part.strip())
-                        current_part = ''
-                        continue
-                    current_part += char
-                
-                if current_part.strip():
-                    nested_parts.append(current_part.strip())
-                    
-                for nested_part in nested_parts:
-                    if '=' in nested_part:
-                        nested_results = process_part(nested_part, col_name)
-                        result.update(nested_results)
-                    else:
-                        result[col_name] = nested_part.strip('[]')
-            else:
-                result[col_name] = parse_value(value)
-                
-            return result
-
-        # Pre-process to identify all possible columns
         all_columns = set()
-        
-        # First pass: collect all possible column names
+        extracted_data = {}
+
         for column in dataframe.columns:
-            for row in dataframe[column].astype(str).replace('\n', '').str.strip().str.split(', '):
+            series = dataframe[column].astype(str).replace('\n', '').str.strip()
+
+            sample_rows = series.str.split(', ')
+            for row in sample_rows:
+                if not isinstance(row, list):
+                    continue
+
                 for part in row:
-                    extracted = process_part(part)
+                    extracted = self._process_part(part)
                     all_columns.update(extracted.keys())
-        
-        # Initialize the data dictionary with all columns
-        extracted_data = {col: [np.nan] * len(dataframe) for col in all_columns}
-        
-        # Second pass: fill in the values
+
+        for col in all_columns:
+            extracted_data[col] = [np.nan] * len(dataframe)
+
         for column in dataframe.columns:
-            for row_index, row in enumerate(dataframe[column].astype(str).replace('\n', '').str.strip().str.split(', ')):
+            series = dataframe[column].astype(str).replace('\n', '').str.strip()
+
+            for idx, row in enumerate(series.str.split(', ')):
+                if not isinstance(row, list):
+                    continue
+
                 for part in row:
-                    extracted = process_part(part)
+                    extracted = self._process_part(part)
                     for key, value in extracted.items():
-                        extracted_data[key][row_index] = value
-        
-        # Create new DataFrame all at once
-        new_df = pd.DataFrame(extracted_data, index=dataframe.index)
-        
-        # Remove original columns that were processed
-        columns_to_keep = set(dataframe.columns) - set(new_df.columns)
+                        if key in extracted_data:
+                            extracted_data[key][idx] = value
+
+        result = pd.DataFrame(extracted_data, index=dataframe.index)
+
+        columns_to_keep = set(dataframe.columns) - set(result.columns)
         if columns_to_keep:
-            result = pd.concat([dataframe[list(columns_to_keep)], new_df], axis=1)
-        else:
-            result = new_df
-            
+            result = pd.concat([dataframe[list(columns_to_keep)], result], axis=1)
+
         return result
