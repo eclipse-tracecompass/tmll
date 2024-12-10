@@ -501,16 +501,10 @@ class TMLLClient:
                             row_data = self._extract_features_from_columns(row_data)
 
                         # Concatenate the row data to the DataFrame of the output
-                        datasets[o_output.id] = pd.concat([datasets[o_output.id], row_data])
-
-                        # If the number of rows in the table is less than the line count, break the loop since there is no more data to fetch
-                        if len(table.rows) < line_count:
-                            break
+                        datasets[o_output.id] = pd.concat([datasets[o_output.id], row_data], ignore_index=True)
                         
                         # Update the start index for the next iteration (i.e., next batch of data)
                         start_index += line_count
-
-                        break
                 case _:
                     self.logger.warning(f"Output type '{o_output.type}' is not supported.")
                     continue
@@ -523,35 +517,105 @@ class TMLLClient:
     
     def _extract_features_from_columns(self, dataframe: pd.DataFrame) -> pd.DataFrame:
         """
-        Extract features from the columns of the DataFrame. For example, if the column contains "key=value" pairs, extract the key and value as separate columns.
+        Extract features from the columns of the DataFrame.
+        For instance, if the column contains "key=value" pairs, extract the key and value as separate columns.
+        Example:
+            - Input: The "Col" column contains "key1=value1, key2=value2, key3=value3" pairs.
+            - Output: The "Col_key1", "Col_key2", and "Col_key3" columns contain "value1", "value2", and "value3" values, respectively.
 
         :param dataframe: DataFrame to extract features from the columns
         :type dataframe: pd.DataFrame
         :return: DataFrame with extracted features
         :rtype: pd.DataFrame
         """
-        
-        df = dataframe.copy()
+        def parse_value(value_str: str) -> str:
+            """Parse the value string."""
+            value_str = value_str.strip('[]')
+            if '=' in value_str and not value_str.startswith(('[', '{')):
+                parts = value_str.split(',')
+                parsed_parts = []
+                for part in parts:
+                    if '=' in part:
+                        parsed_parts.append(part.strip())
+                return ','.join(parsed_parts) if parsed_parts else value_str
+            return value_str
 
-        for column in df.columns:
-            new_columns = {}
-
-            for row_index, row in enumerate(df[column].astype(str).replace("\n", "").str.strip().str.split(", ")):
-                for part in row:
-                    if "=" in part:
-                        key, value = part.split("=")
-                        key = re.sub(r"[^\w\s]", "", key).strip()
-                        new_col_name = f"{column}_{key}"
-
-                        if new_col_name not in new_columns:
-                            new_columns[new_col_name] = [np.nan] * len(df)
-                        
-                        new_columns[new_col_name][row_index] = value
+        def process_part(part: str, base_column: str = '') -> dict:
+            """Process a part of the row."""
+            result = {}
+            
+            if '=' not in part:
+                return result
+                
+            try:
+                key, value = part.split('=', 1)
+            except ValueError:
+                print(f"Warning: Couldn't split '{part}'")
+                return result
+                
+            key = re.sub(r'[^\w\s]', '', key).strip()
+            col_name = f"{base_column}_{key}" if base_column else key
+            
+            if value.startswith('['):
+                nested_parts = []
+                current_part = ''
+                bracket_count = 0
+                
+                for char in value[1:-1] if value.endswith(']') else value[1:]:
+                    if char == '[':
+                        bracket_count += 1
+                    elif char == ']':
+                        bracket_count -= 1
+                    elif char == ',' and bracket_count == 0:
+                        if current_part.strip():
+                            nested_parts.append(current_part.strip())
+                        current_part = ''
+                        continue
+                    current_part += char
+                
+                if current_part.strip():
+                    nested_parts.append(current_part.strip())
                     
-            for col_name, values in new_columns.items():
-                df[col_name] = pd.Series(values, index=df.index)
+                for nested_part in nested_parts:
+                    if '=' in nested_part:
+                        nested_results = process_part(nested_part, col_name)
+                        result.update(nested_results)
+                    else:
+                        result[col_name] = nested_part.strip('[]')
+            else:
+                result[col_name] = parse_value(value)
+                
+            return result
 
-            if new_columns:
-                df.drop(columns=[column], inplace=True)
-
-        return df
+        # Pre-process to identify all possible columns
+        all_columns = set()
+        
+        # First pass: collect all possible column names
+        for column in dataframe.columns:
+            for row in dataframe[column].astype(str).replace('\n', '').str.strip().str.split(', '):
+                for part in row:
+                    extracted = process_part(part)
+                    all_columns.update(extracted.keys())
+        
+        # Initialize the data dictionary with all columns
+        extracted_data = {col: [np.nan] * len(dataframe) for col in all_columns}
+        
+        # Second pass: fill in the values
+        for column in dataframe.columns:
+            for row_index, row in enumerate(dataframe[column].astype(str).replace('\n', '').str.strip().str.split(', ')):
+                for part in row:
+                    extracted = process_part(part)
+                    for key, value in extracted.items():
+                        extracted_data[key][row_index] = value
+        
+        # Create new DataFrame all at once
+        new_df = pd.DataFrame(extracted_data, index=dataframe.index)
+        
+        # Remove original columns that were processed
+        columns_to_keep = set(dataframe.columns) - set(new_df.columns)
+        if columns_to_keep:
+            result = pd.concat([dataframe[list(columns_to_keep)], new_df], axis=1)
+        else:
+            result = new_df
+            
+        return result
