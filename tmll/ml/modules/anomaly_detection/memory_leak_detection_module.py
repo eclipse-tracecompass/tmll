@@ -581,12 +581,13 @@ class MemoryLeakDetection(BaseModule):
                 "Maximum Lifetime": f"{self._convert_time(lifetimes.max())}"
             })
 
-    def plot(self, analysis_result: LeakAnalysisResult) -> None:
+    def plot(self, analysis_result: LeakAnalysisResult, **kwargs) -> None:
         """
         Plot memory usage trends and analysis results.
 
         :param analysis_result: The results of the memory leak analysis
         :type analysis_result: LeakAnalysisResult
+        :param kwargs: Additional keyword arguments
         """
         memory_df = self.dataframes['Memory Usage']
         events_df = self.dataframes['Events Table']
@@ -597,7 +598,9 @@ class MemoryLeakDetection(BaseModule):
         time_range = (memory_df.index[-1] - memory_df.index[0]).total_seconds()
         points_per_window = max(len(memory_df) // 50, 1)
 
-        colors = plt.get_cmap('tab10')
+        fig_size = kwargs.get('fig_size', (15, 5))
+        fig_dpi = kwargs.get('fig_dpi', 100)
+        colors = plt.get_cmap(kwargs.get('color_map', 'tab10'))
 
         # Plot 1: Memory Usage Over Time
         plots = [
@@ -636,7 +639,7 @@ class MemoryLeakDetection(BaseModule):
                 "linewidth": 2.5
             }
         ]
-        self._plot(plots, plot_size=(15, 5), dpi=300, fig_title="Memory Usage Over Time",
+        self._plot(plots, plot_size=fig_size, dpi=fig_dpi, fig_title="Memory Usage Over Time",
                    fig_xlabel="Time", fig_ylabel="Memory Usage (bytes)", grid=True)
 
         # Plot 2: Allocation Patterns
@@ -647,24 +650,22 @@ class MemoryLeakDetection(BaseModule):
         plots = [
             {
                 "plot_type": "time_series",
-                "data": alloc_series.to_frame(name='Allocations'),
-                "y": "Allocations",
+                "data": alloc_series,
                 "label": "Allocations",
-                "alpha": 0.8,
+                "alpha": 0.6,
                 "color": colors(3),
                 "linewidth": 2.5
             },
             {
                 "plot_type": "time_series",
-                "data": dealloc_series.to_frame(name='Deallocations'),
-                "y": "Deallocations",
+                "data": dealloc_series,
                 "label": "Deallocations",
-                "alpha": 0.8,
+                "alpha": 0.7,
                 "color": colors(4),
                 "linewidth": 2.5
             }
         ]
-        self._plot(plots, plot_size=(15, 5), dpi=300, fig_title="Memory Operations Over Time",
+        self._plot(plots, plot_size=fig_size, dpi=fig_dpi, fig_title="Memory Operations Over Time",
                    fig_xlabel="Time", fig_ylabel="Operations per Second", grid=True)
 
         # Plot 3: Pointer Lifetime Distribution
@@ -678,29 +679,27 @@ class MemoryLeakDetection(BaseModule):
             },
             {
                 "plot_type": "vline",
-                "data": None,
                 "x": lifetimes.mean(),
-                "label": f"Mean: {lifetimes.mean():.2f}s",
+                "label": f"Mean: {self._convert_time(lifetimes.mean())}",
                 "color": colors(6),
                 "linestyle": "--",
                 "linewidth": 2.5
             },
             {
                 "plot_type": "vline",
-                "data": None,
                 "x": lifetimes.median(),
-                "label": f"Median: {lifetimes.median():.2f}s",
+                "label": f"Median: {self._convert_time(lifetimes.median())}",
                 "color": colors(7),
                 "linestyle": "--",
                 "linewidth": 2.5
             }
         ]
-        self._plot(plots, plot_size=(15, 5), dpi=300, fig_title="Pointer Lifetime Distribution",
+        self._plot(plots, plot_size=fig_size, dpi=fig_dpi, fig_title="Pointer Lifetime Distribution",
                    fig_xlabel="Lifetime (seconds)", fig_ylabel="Count", grid=True)
 
         # Plot 4: Memory Fragmentation Analysis
-        alloc_cumsum = allocation_events.resample(self.window_size).size().cumsum()
-        dealloc_cumsum = deallocation_events.resample(self.window_size).size().cumsum()
+        alloc_cumsum = allocation_events.resample(resample_window).size().cumsum()
+        dealloc_cumsum = deallocation_events.resample(resample_window).size().cumsum()
         active_allocations = alloc_cumsum - dealloc_cumsum
         total_ops = alloc_cumsum + dealloc_cumsum
         fragmentation_score = (active_allocations / total_ops.replace(0, 1)) * 100
@@ -708,8 +707,7 @@ class MemoryLeakDetection(BaseModule):
         plots = [
             {
                 "plot_type": "time_series",
-                "data": fragmentation_score.to_frame(name='Fragmentation Score'),
-                "y": "Fragmentation Score",
+                "data": fragmentation_score,
                 "label": "Fragmentation Score",
                 "color": colors(8),
                 "alpha": 0.8,
@@ -717,7 +715,6 @@ class MemoryLeakDetection(BaseModule):
             },
             {
                 "plot_type": "hline",
-                "data": None,
                 "y": self.fragmentation_threshold * 100,
                 "label": f"Threshold ({self.fragmentation_threshold * 100}%)",
                 "color": colors(9),
@@ -725,5 +722,5 @@ class MemoryLeakDetection(BaseModule):
                 "linewidth": 2.5
             }
         ]
-        self._plot(plots, plot_size=(15, 5), dpi=300, fig_title="Memory Fragmentation Analysis",
+        self._plot(plots, plot_size=fig_size, dpi=fig_dpi, fig_title="Memory Fragmentation Analysis",
                    fig_xlabel="Time", fig_ylabel="Fragmentation Score (%)", grid=True)
