@@ -55,8 +55,8 @@ class BaseModule(ABC):
 
         # Plot each plot
         for plot_info in plots:
-            plot_type = plot_info['plot_type']
-            data = plot_info['data']
+            plot_type = plot_info.get('plot_type', None)
+            data = plot_info.get('data', None)
 
             # Create the plot
             plot_strategy = PlotFactory.create_plot(plot_type)

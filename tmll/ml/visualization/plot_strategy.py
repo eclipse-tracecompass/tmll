@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional, Tuple
 
 from matplotlib.axes import Axes
 
@@ -11,7 +11,7 @@ class PlotStrategy(ABC):
     """
 
     @abstractmethod
-    def plot(self, ax: Axes, data: Any, **kwargs) -> None:
+    def plot(self, ax: Axes, data: Optional[Any] = None, **kwargs) -> None:
         """
         An abstract method to plot the data on the given axes.
         Each plot strategy will implement this method based on the corresponding plot type.
@@ -19,7 +19,7 @@ class PlotStrategy(ABC):
         :param ax: The axes to plot the data
         :type ax: Axes
         :param data: The data to plot
-        :type data: Any
+        :type Optional[Any]
         :param kwargs: Additional keyword arguments for the plot
         :return: None
         """
@@ -44,3 +44,23 @@ class PlotStrategy(ABC):
         ax.set_title(title)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
+
+    def _get_x_y(self, data: Any, **kwargs) -> Tuple[Any, Any]:
+        """
+        Get the x and y values from the data based on the given keyword arguments.
+
+        :param data: The data to extract the x and y values
+        :type data: Any
+        :param kwargs: Additional keyword arguments
+        :return: The x and y values
+        :rtype: tuple
+        """
+        if data is None:
+            raise ValueError("Data is required for plotting")
+
+        x = kwargs.get('x', None)
+        y = kwargs.get('y', None)
+        x = data[x] if x else data.index
+        y = data[y] if y else data
+
+        return x, y
