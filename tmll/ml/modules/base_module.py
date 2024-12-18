@@ -1,9 +1,13 @@
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from abc import ABC, abstractmethod
 
 import matplotlib.pyplot as plt
+import pandas as pd
 
+from tmll.common.models.output import Output
 from tmll.common.services.logger import Logger
+from tmll.ml.modules.common.data_fetch import DataFetcher
+from tmll.ml.modules.common.data_preprocess import DataPreprocessor
 from tmll.ml.visualization.plot_factory import PlotFactory
 from tmll.common.models.experiment import Experiment
 from tmll.ml.visualization.utils import PlotUtils
@@ -20,11 +24,15 @@ class BaseModule(ABC):
         :param experiment: The experiment to analyze
         :type experiment: Experiment
         """
-        self.client = client
-        self.experiment = experiment
+        self.client: TMLLClient = client
+        self.experiment: Experiment = experiment
 
-        self.logger = Logger(self.__class__.__name__)
-    
+        self.dataframes: Dict[str, pd.DataFrame] = {}
+        self.data_fetcher: DataFetcher = DataFetcher(client)
+        self.data_preprocessor: DataPreprocessor = DataPreprocessor()
+
+        self.logger: Logger = Logger(self.__class__.__name__)
+
     def _plot(self, plots: List[Dict[str, Any]], plot_size: Tuple[float, float] = (15, 10), **kwargs) -> None:
         """
         Plot the given plots. 
@@ -70,7 +78,7 @@ class BaseModule(ABC):
         # Add the legend to the plot (remove duplicates)
         if kwargs.get('legend', True):
             handles, labels = plt.gca().get_legend_handles_labels()
-            by_label = dict(zip(labels, handles))   
+            by_label = dict(zip(labels, handles))
             PlotUtils.set_standard_legend_style(ax, by_label.values(), by_label.keys(), title=kwargs.get('legend_title', None))
         else:
             ax.get_legend().remove()
@@ -79,12 +87,74 @@ class BaseModule(ABC):
         plt.tight_layout()
         plt.show()
 
-    @abstractmethod
-    def process(self):
+    def _process(self, outputs: Optional[List[Output]] = None, **kwargs) -> None:
         """
-        An abstract method to process the module.
-        Each concrete module should implement this method.
+        Base processing method that handles common data fetching and preprocessing tasks.
 
-        :return: None
+        :param outputs: Optional list of outputs to process
+        :type outputs: Optional[List[Output]]
+        :param kwargs: Additional keyword arguments for specific module processing
+        """
+        self.dataframes.clear()
+
+        data, outputs = self.data_fetcher.fetch_data(
+            experiment=self.experiment,
+            target_outputs=outputs,
+            **kwargs.get('fetch_params', {}))
+
+        if data is None:
+            self.logger.error("No data fetched")
+            return
+
+        # Process each output
+        for output_key, output_data in data.items():
+            shortened = output_key.split("$")[0]
+            converted = next(iter(output for output in outputs if output.id == shortened), None) if outputs else None
+            shortened = converted.name if converted else shortened
+
+            if shortened not in self.dataframes:
+                df = output_data
+
+                # Apply common preprocessing steps
+                if kwargs.get('normalize', True):
+                    df = self.data_preprocessor.normalize(df)
+                if kwargs.get('convert_datetime', True):
+                    df = self.data_preprocessor.convert_to_datetime(df)
+                if kwargs.get('resample', True):
+                    df = self.data_preprocessor.resample(df, frequency=kwargs.get('resample_freq', '1s'))
+                if kwargs.get('remove_minimum', False):
+                    df = self.data_preprocessor.remove_minimum(df)
+
+                # Handle Timegraphs
+                if converted and converted == "TIME_GRAPH":
+                    df["duration"] = df["end_time"] - df["start_time"]
+                    df["timestamp"] = df["start_time"]
+                    df.drop(columns=["start_time", "end_time", "entry_id"], inplace=True, errors="ignore")
+
+                    separated = self.data_preprocessor.separate_timegraph(df, "label")
+                    for key, value in separated.items():
+                        if not value.empty:
+                            self.dataframes[f"{shortened}${key}"] = value
+                else:
+                    self.dataframes[shortened] = df
+
+        # Filter out dataframes with less than min_size instances
+        min_size = kwargs.get('min_size', 1)
+        self.dataframes = {k: v for k, v in self.dataframes.items() if len(v) >= min_size}
+
+        # Align timestamps if needed
+        if kwargs.get('align_timestamps', True) and self.dataframes:
+            self.dataframes, self.timestamps = DataPreprocessor.align_timestamps(self.dataframes)
+
+        # Call module-specific post-processing
+        self._post_process(**kwargs)
+
+    @abstractmethod
+    def _post_process(self, **kwargs) -> None:
+        """
+        Abstract method for module-specific post-processing.
+        Should be implemented by each module.
+
+        :param kwargs: Additional keyword arguments for specific module processing
         """
         pass

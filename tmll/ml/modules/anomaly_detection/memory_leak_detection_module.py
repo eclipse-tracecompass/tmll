@@ -1,7 +1,6 @@
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from typing import Any, List, Tuple, Dict, cast
+from typing import Any, List, Optional, Tuple, Dict, cast
 from scipy import stats
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -10,8 +9,6 @@ from tmll.ml.modules.base_module import BaseModule
 from tmll.common.models.experiment import Experiment
 from tmll.common.models.output import Output
 from tmll.tmll_client import TMLLClient
-from tmll.ml.modules.common.data_fetch import DataFetcher
-from tmll.ml.modules.common.data_preprocess import DataPreprocessor
 from tmll.ml.utils.document_generator import DocumentGenerator
 
 
@@ -64,56 +61,57 @@ class MemoryLeakDetection(BaseModule):
 
     BASE_OUTPUTS = [
         Output.from_dict({
-            'name': 'Events Table',
-            'id': 'org.eclipse.tracecompass.internal.provisional.tmf.core.model.events.TmfEventTableDataProvider'
+            "name": "Events Table",
+            "id": "org.eclipse.tracecompass.internal.provisional.tmf.core.model.events.TmfEventTableDataProvider"
         }),
         Output.from_dict({
-            'name': 'Memory Usage',
-            'id': 'org.eclipse.tracecompass.lttng2.ust.core.analysis.memory.UstMemoryUsageDataProvider'
+            "name": "Memory Usage",
+            "id": "org.eclipse.tracecompass.lttng2.ust.core.analysis.memory.UstMemoryUsageDataProvider"
         }),
     ]
 
-    def __init__(self, client: TMLLClient, experiment: Experiment):
+    def __init__(self, client: TMLLClient, experiment: Experiment, **kwargs) -> None:
+        """
+        Initialize the memory leak detection module with the given TMLL client and experiment.
+
+        :param client: The TMLL client to use
+        :type client: TMLLClient
+        :param experiment: The experiment to analyze
+        :type experiment: Experiment
+        :param kwargs: Additional keyword arguments
+        :type kwargs: dict
+        """
         super().__init__(client, experiment)
-        self.data_fetcher = DataFetcher(client)
-        self.data_preprocessor = DataPreprocessor()
-        self.dataframes = {}
+
+        self.ptr_lifecycle: pd.DataFrame = pd.DataFrame()
+
+        self.logger.info("Initializing Memory Leak Detection module.")
+
+        self._process(self.BASE_OUTPUTS, **kwargs)
+
+    def _process(self, outputs: Optional[List[Output]] = None, **kwargs) -> None:
+        super()._process(outputs=outputs,
+                         fetch_params={"table_line_column_ids": [3, 4, 14]},  # TODO: Dynamic Column IDs for Event type, Contents, Timestamp ns
+                         normalize=kwargs.get("normalize", False),
+                         resample=kwargs.get("resample", False),
+                         align_timestamps=False,
+                         **kwargs)
+
+    def _post_process(self, **kwargs) -> None:
         self.ptr_lifecycle = pd.DataFrame()
 
-        self.slope_threshold = 0.5
-        self.fragmentation_threshold = 0.7
-        self.window_size = '1s'
+        if "Events Table" in self.dataframes:
+            df = self.dataframes["Events Table"]
+            df["event_category"] = "other"
+            df.loc[df["Event type"].str.contains("malloc", na=False), "event_category"] = "allocation"
+            df.loc[df["Event type"].str.contains("free", na=False), "event_category"] = "deallocation"
+            df = df[df["event_category"] != "other"]
 
-    def process(self) -> None:
-        """
-        Process and prepare the data for memory leak analysis.
-        """
-        self.dataframes.clear()
-        self.ptr_lifecycle = pd.DataFrame()
+            df = df.rename({"size": "allocation_size"}, axis=1)
+            df["allocation_size"] = df["allocation_size"].astype(float)
+            df["ptr"] = df["ptr"].astype(str)
 
-        # TODO: Have a flexible table line column ID configuration
-        data, outputs = self.data_fetcher.fetch_data(
-            experiment=self.experiment,
-            target_outputs=self.BASE_OUTPUTS,
-            table_line_column_ids=[4, 5, 17]  # Column IDs for the Events Table (Event type, Contents, Timestamp ns)
-        )
-
-        if data is None:
-            self.logger.error("No data fetched")
-            return
-
-        for output_key, output_data in data.items():
-            shortened = output_key.split("$")[0]
-            converted = next(iter(output for output in outputs if output.id == shortened), None) if outputs else None
-            shortened = converted.name if converted else shortened
-
-            if shortened not in self.dataframes:
-                df = self.data_preprocessor.convert_to_datetime(output_data)
-                if shortened == 'Events Table':
-                    df = self._separate_events(df)
-
-                if not df.empty:
-                    self.dataframes[shortened] = df
+            self.dataframes["Events Table"] = df
 
     def _separate_events(self, dataframe: pd.DataFrame) -> pd.DataFrame:
         """
@@ -125,19 +123,19 @@ class MemoryLeakDetection(BaseModule):
         :return: The processed events table
         :rtype: pd.DataFrame
         """
-        dataframe['event_category'] = 'other'
-        dataframe.loc[dataframe['Event type'].str.contains('malloc', na=False), 'event_category'] = 'allocation'
-        dataframe.loc[dataframe['Event type'].str.contains('free', na=False), 'event_category'] = 'deallocation'
-        dataframe = dataframe[dataframe['event_category'] != 'other']
+        dataframe["event_category"] = "other"
+        dataframe.loc[dataframe["Event type"].str.contains("malloc", na=False), "event_category"] = "allocation"
+        dataframe.loc[dataframe["Event type"].str.contains("free", na=False), "event_category"] = "deallocation"
+        dataframe = dataframe[dataframe["event_category"] != "other"]
 
-        dataframe = dataframe.rename({'size': 'allocation_size'}, axis=1)
-        dataframe['allocation_size'] = dataframe['allocation_size'].astype(float)
+        dataframe = dataframe.rename({"size": "allocation_size"}, axis=1)
+        dataframe["allocation_size"] = dataframe["allocation_size"].astype(float)
 
-        dataframe['ptr'] = dataframe['ptr'].astype(str)
+        dataframe["ptr"] = dataframe["ptr"].astype(str)
 
         return dataframe
 
-    def analyze_memory_leaks(self, window_size: str = '1s', fragmentation_threshold: float = 0.7,
+    def analyze_memory_leaks(self, window_size: str = "1s", fragmentation_threshold: float = 0.7,
                              slope_threshold: float = 0.5) -> LeakAnalysisResult:
         """
         Analyze memory usage patterns and detect memory leaks in the data.
@@ -150,7 +148,7 @@ class MemoryLeakDetection(BaseModule):
             6. Identify suspicious memory allocation locations
             7. Collect and describe detected memory leak patterns
 
-        :param window_size: The window size for trend analysis, defaults to '1s'
+        :param window_size: The window size for trend analysis, defaults to "1s"
         :type window_size: str, optional
         :param fragmentation_threshold: The threshold for memory fragmentation, defaults to 0.7
         :type fragmentation_threshold: float, optional
@@ -167,7 +165,7 @@ class MemoryLeakDetection(BaseModule):
         memory_trend = self._analyze_memory_trend()
         allocation_patterns = self._analyze_allocation_patterns()
         metrics = self._calculate_memory_metrics(ptr_tracking, memory_trend, allocation_patterns)
-        severity, confidence = self._evaluate_severity(metrics, memory_trend['p_value'])
+        severity, confidence = self._evaluate_severity(metrics, memory_trend["p_value"])
         suspicious_locs = self._identify_suspicious_locations(ptr_tracking)
         patterns = self._collect_detected_patterns(memory_trend, allocation_patterns)
 
@@ -186,42 +184,42 @@ class MemoryLeakDetection(BaseModule):
         :return: A DataFrame containing information about memory leaks
         :rtype: pd.DataFrame
         """
-        if 'Events Table' not in self.dataframes or self.dataframes['Events Table'].empty:
+        if "Events Table" not in self.dataframes or self.dataframes["Events Table"].empty:
             self.logger.warning("No events data available for memory leak analysis")
             return pd.DataFrame()
 
         if not self.ptr_lifecycle.empty:
             return self.ptr_lifecycle
 
-        events_df = self.dataframes['Events Table']
+        events_df = self.dataframes["Events Table"]
 
         # Separate allocations and deallocations
-        allocations = events_df[events_df['event_category'] == 'allocation']
-        deallocations = events_df[events_df['event_category'] == 'deallocation']
+        allocations = events_df[events_df["event_category"] == "allocation"]
+        deallocations = events_df[events_df["event_category"] == "deallocation"]
 
         # Create base allocation records
         allocation_records = allocations.copy()
-        allocation_records['allocation_time'] = allocation_records.index
+        allocation_records["allocation_time"] = allocation_records.index
 
         # Check for duplicate allocations (potential corruption)
-        duplicate_allocs = allocation_records['ptr'].value_counts()
+        duplicate_allocs = allocation_records["ptr"].value_counts()
         if any(duplicate_allocs > 1):
             # Keep only the first allocation for duplicates
-            allocation_records = allocation_records.groupby('ptr').first().reset_index()
+            allocation_records = allocation_records.groupby("ptr").first().reset_index()
 
         # Merge with deallocations to get lifecycle
         merged = pd.merge(
             allocation_records,
-            deallocations[['ptr']].assign(deallocation_time=deallocations.index),
-            on='ptr',
-            how='left'
+            deallocations[["ptr"]].assign(deallocation_time=deallocations.index),
+            on="ptr",
+            how="left"
         )
 
         # Calculate lifetime
-        merged['lifetime'] = (merged['deallocation_time'] - merged['allocation_time']).dt.total_seconds()
+        merged["lifetime"] = (merged["deallocation_time"] - merged["allocation_time"]).dt.total_seconds()
 
         # Rename size column
-        merged = merged.rename(columns={'allocation_size': 'size'})
+        merged = merged.rename(columns={"allocation_size": "size"})
 
         self.ptr_lifecycle = merged
         return self.ptr_lifecycle
@@ -233,22 +231,22 @@ class MemoryLeakDetection(BaseModule):
         :return: The results of the memory usage trend analysis
         :rtype: Dict[str, Any]
         """
-        if 'Memory Usage' not in self.dataframes or self.dataframes['Memory Usage'].empty:
+        if "Memory Usage" not in self.dataframes or self.dataframes["Memory Usage"].empty:
             self.logger.warning("No memory usage data available for trend analysis")
             return {}
 
-        memory_df = self.dataframes['Memory Usage']
+        memory_df = self.dataframes["Memory Usage"]
 
         # Convert timestamps to seconds from start
         time_seconds = (memory_df.index - memory_df.index[0]).total_seconds()
 
         # Calculate rolling statistics
         window_size = pd.Timedelta(self.window_size)
-        rolling_mean = memory_df['Memory Usage'].rolling(window=window_size).mean()
-        rolling_std = memory_df['Memory Usage'].rolling(window=window_size).std()
+        rolling_mean = memory_df["Memory Usage"].rolling(window=window_size).mean()
+        rolling_std = memory_df["Memory Usage"].rolling(window=window_size).std()
 
         # Perform linear regression with actual time intervals
-        slope, intercept, r_value, p_value, _ = stats.linregress(time_seconds, memory_df['Memory Usage'].values)
+        slope, intercept, r_value, p_value, _ = stats.linregress(time_seconds, memory_df["Memory Usage"].values)
         slope = cast(float, slope)
         intercept = cast(float, intercept)
         r_value = cast(float, r_value)
@@ -260,14 +258,14 @@ class MemoryLeakDetection(BaseModule):
         growth_rate = slope if is_increasing else 0
 
         return {
-            'slope': slope,
-            'intercept': intercept,
-            'r_squared': r_value ** 2,
-            'p_value': p_value,
-            'growth_rate': growth_rate,
-            'is_significant': is_significant,
-            'rolling_mean': rolling_mean,
-            'rolling_std': rolling_std
+            "slope": slope,
+            "intercept": intercept,
+            "r_squared": r_value ** 2,
+            "p_value": p_value,
+            "growth_rate": growth_rate,
+            "is_significant": is_significant,
+            "rolling_mean": rolling_mean,
+            "rolling_std": rolling_std
         }
 
     def _analyze_allocation_patterns(self) -> Dict[str, Any]:
@@ -277,15 +275,15 @@ class MemoryLeakDetection(BaseModule):
         :return: The results of the allocation pattern analysis
         :rtype: Dict[str, Any]
         """
-        if 'Events Table' not in self.dataframes or self.dataframes['Events Table'].empty:
+        if "Events Table" not in self.dataframes or self.dataframes["Events Table"].empty:
             self.logger.warning("No events data available for allocation pattern analysis")
             return {}
 
-        events_df = self.dataframes['Events Table']
-        allocation_events = events_df[events_df['event_category'] == 'allocation']
+        events_df = self.dataframes["Events Table"]
+        allocation_events = events_df[events_df["event_category"] == "allocation"]
 
         # Check for null values in allocation size
-        null_sizes = allocation_events['allocation_size'].isnull().sum()
+        null_sizes = allocation_events["allocation_size"].isnull().sum()
         if null_sizes > 0:
             self.logger.warning(
                 f"Found {null_sizes} allocations with null size. "
@@ -296,17 +294,17 @@ class MemoryLeakDetection(BaseModule):
         allocation_freq = allocation_events.resample(self.window_size).size()
 
         # Analyze allocation sizes with null handling
-        allocation_sizes = allocation_events['allocation_size']
+        allocation_sizes = allocation_events["allocation_size"]
         valid_sizes = allocation_sizes.dropna()
 
         return {
-            'allocation_frequency': allocation_freq,
-            'mean_allocation_size': valid_sizes.mean() if not valid_sizes.empty else 0,
-            'median_allocation_size': valid_sizes.median() if not valid_sizes.empty else 0,
-            'size_std': valid_sizes.std() if not valid_sizes.empty else 0,
-            'total_allocations': len(allocation_events),
-            'unique_sizes': valid_sizes.nunique() if not valid_sizes.empty else 0,
-            'null_size_count': null_sizes
+            "allocation_frequency": allocation_freq,
+            "mean_allocation_size": valid_sizes.mean() if not valid_sizes.empty else 0,
+            "median_allocation_size": valid_sizes.median() if not valid_sizes.empty else 0,
+            "size_std": valid_sizes.std() if not valid_sizes.empty else 0,
+            "total_allocations": len(allocation_events),
+            "unique_sizes": valid_sizes.nunique() if not valid_sizes.empty else 0,
+            "null_size_count": null_sizes
         }
 
     def _calculate_memory_metrics(self, ptr_tracking: pd.DataFrame, memory_trend: Dict, allocation_patterns: Dict) -> MemoryMetrics:
@@ -329,31 +327,31 @@ class MemoryLeakDetection(BaseModule):
         :return: The calculated memory metrics
         :rtype: MemoryMetrics
         """
-        unreleased = len(ptr_tracking[ptr_tracking['deallocation_time'].isna()])
+        unreleased = len(ptr_tracking[ptr_tracking["deallocation_time"].isna()])
 
         # Calculate memory fragmentation score
         if not ptr_tracking.empty:
             allocated_chunks = len(ptr_tracking)
-            concurrent_chunks = len(ptr_tracking[ptr_tracking['deallocation_time'].isna()])
+            concurrent_chunks = len(ptr_tracking[ptr_tracking["deallocation_time"].isna()])
             fragmentation_score = concurrent_chunks / allocated_chunks if allocated_chunks > 0 else 0
         else:
             fragmentation_score = 0
 
         # Calculate maximum continuous growth duration
-        rolling_mean = memory_trend['rolling_mean']
+        rolling_mean = memory_trend["rolling_mean"]
         growth_periods = (rolling_mean.diff() > 0)
         consecutive_periods = growth_periods.groupby((growth_periods != growth_periods.shift()).cumsum())
         max_growth_duration = (consecutive_periods.apply(lambda x: (x.index[-1] - x.index[0]).total_seconds() if len(x) > 1 else 0).max())
 
         return MemoryMetrics(
             unreleased_allocations=unreleased,
-            total_allocations=allocation_patterns['total_allocations'],
-            leak_rate=memory_trend['growth_rate'],
-            avg_allocation_size=allocation_patterns['mean_allocation_size'],
+            total_allocations=allocation_patterns["total_allocations"],
+            leak_rate=memory_trend["growth_rate"],
+            avg_allocation_size=allocation_patterns["mean_allocation_size"],
             max_continuous_growth_duration=max_growth_duration,
             memory_fragmentation_score=fragmentation_score,
-            regression_slope=memory_trend['slope'],
-            regression_intercept=memory_trend['intercept']
+            regression_slope=memory_trend["slope"],
+            regression_intercept=memory_trend["intercept"]
         )
 
     def _evaluate_severity(self, metrics: MemoryMetrics, p_value: float) -> Tuple[MemoryLeakSeverity, float]:
@@ -416,30 +414,30 @@ class MemoryLeakDetection(BaseModule):
         :return: The top suspicious memory allocation locations
         :rtype: pd.DataFrame
         """
-        if 'Events Table' not in self.dataframes or self.dataframes['Events Table'].empty:
+        if "Events Table" not in self.dataframes or self.dataframes["Events Table"].empty:
             self.logger.warning("No events data available for suspicious location analysis")
             return pd.DataFrame()
 
-        events_df = self.dataframes['Events Table']
+        events_df = self.dataframes["Events Table"]
 
         # Find allocations without matching deallocations
-        unfreed_ptrs = ptr_tracking[ptr_tracking['deallocation_time'].isna()]['ptr']
+        unfreed_ptrs = ptr_tracking[ptr_tracking["deallocation_time"].isna()]["ptr"]
 
         # Get allocation events for unfreed pointers
         suspicious_allocs = events_df[
-            (events_df['event_category'] == 'allocation') &
-            (events_df['ptr'].isin(unfreed_ptrs))
+            (events_df["event_category"] == "allocation") &
+            (events_df["ptr"].isin(unfreed_ptrs))
         ]
 
         # Group by location and calculate metrics
-        location_metrics = suspicious_allocs.groupby(['ptr']).agg({
-            'allocation_size': ['sum', 'count'],
-            'Event type': 'first'  # Keep the original event for context
+        location_metrics = suspicious_allocs.groupby(["ptr"]).agg({
+            "allocation_size": ["sum", "count"],
+            "Event type": "first"  # Keep the original event for context
         }).reset_index()
 
-        location_metrics.columns = ['ptr', 'total_bytes', 'allocation_count', 'event_context']
+        location_metrics.columns = ["ptr", "total_bytes", "allocation_count", "event_context"]
 
-        return location_metrics.sort_values('total_bytes', ascending=False)
+        return location_metrics.sort_values("total_bytes", ascending=False)
 
     def _collect_detected_patterns(self, memory_trend: Dict[str, Any], allocation_patterns: Dict[str, Any]) -> List[str]:
         """
@@ -458,13 +456,13 @@ class MemoryLeakDetection(BaseModule):
         """
         patterns = []
 
-        if memory_trend['is_significant'] and memory_trend['slope'] > 0:
-            patterns.append(f"Systematic memory growth detected: {self._convert_bytes(memory_trend['growth_rate'])}/second")
+        if memory_trend["is_significant"] and memory_trend["slope"] > 0:
+            patterns.append(f"Systematic memory growth detected: {self._convert_bytes(memory_trend["growth_rate"])}/second")
 
-        if allocation_patterns['allocation_frequency'].std() > allocation_patterns['allocation_frequency'].mean():
+        if allocation_patterns["allocation_frequency"].std() > allocation_patterns["allocation_frequency"].mean():
             patterns.append("Irregular allocation pattern detected")
 
-        if memory_trend['rolling_std'].mean() > memory_trend['rolling_mean'].mean() * 0.1:
+        if memory_trend["rolling_std"].mean() > memory_trend["rolling_mean"].mean() * 0.1:
             patterns.append("High memory usage volatility detected")
 
         return patterns
@@ -478,7 +476,7 @@ class MemoryLeakDetection(BaseModule):
         :return: The size in human-readable format
         :rtype: str
         """
-        units = ['B', 'KB', 'MB', 'GB', 'TB']
+        units = ["B", "KB", "MB", "GB", "TB"]
         unit_index = 0
 
         while size_in_bytes >= 1024 and unit_index < len(units) - 1:
@@ -496,7 +494,7 @@ class MemoryLeakDetection(BaseModule):
         :return: The time in human-readable format
         :rtype: str
         """
-        units = ['s', 'm', 'h']
+        units = ["s", "m", "h"]
         thresholds = [1, 60, 3600]
         time = abs(time_in_seconds)
 
@@ -543,7 +541,7 @@ class MemoryLeakDetection(BaseModule):
         if not analysis_result.suspicious_locations.empty:
             suspicious_headers = ["Pointer", "Total Bytes", "Allocation Count", "Event Context"]
             suspicious_rows = [
-                [row['ptr'], row['total_bytes'], row['allocation_count'], row['event_context']]
+                [row["ptr"], row["total_bytes"], row["allocation_count"], row["event_context"]]
                 for _, row in analysis_result.suspicious_locations.head().iterrows()
             ]
             DocumentGenerator.table(
@@ -552,18 +550,18 @@ class MemoryLeakDetection(BaseModule):
                 "Top 5 Suspicious Locations"
             )
 
-        memory_df = self.dataframes['Memory Usage']
+        memory_df = self.dataframes["Memory Usage"]
         DocumentGenerator.metrics_group("Memory Usage Statistics", {
-            "Peak Memory Usage": self._convert_bytes(memory_df['Memory Usage'].max()),
-            "Average Memory Usage": self._convert_bytes(memory_df['Memory Usage'].mean()),
-            "Memory Usage Std Dev": self._convert_bytes(memory_df['Memory Usage'].std())
+            "Peak Memory Usage": self._convert_bytes(memory_df["Memory Usage"].max()),
+            "Average Memory Usage": self._convert_bytes(memory_df["Memory Usage"].mean()),
+            "Memory Usage Std Dev": self._convert_bytes(memory_df["Memory Usage"].std())
         })
 
-        allocation_events = self.dataframes['Events Table'][
-            self.dataframes['Events Table']['event_category'] == 'allocation'
+        allocation_events = self.dataframes["Events Table"][
+            self.dataframes["Events Table"]["event_category"] == "allocation"
         ]
-        deallocation_events = self.dataframes['Events Table'][
-            self.dataframes['Events Table']['event_category'] == 'deallocation'
+        deallocation_events = self.dataframes["Events Table"][
+            self.dataframes["Events Table"]["event_category"] == "deallocation"
         ]
 
         DocumentGenerator.metrics_group("Allocation Statistics", {
@@ -573,7 +571,7 @@ class MemoryLeakDetection(BaseModule):
         })
 
         ptr_tracking = self._track_pointer_lifecycle()
-        lifetimes = ptr_tracking['lifetime'].dropna()
+        lifetimes = ptr_tracking["lifetime"].dropna()
         if not lifetimes.empty:
             DocumentGenerator.metrics_group("Pointer Lifetime Statistics", {
                 "Average Lifetime": f"{self._convert_time(lifetimes.mean())}",
@@ -589,18 +587,18 @@ class MemoryLeakDetection(BaseModule):
         :type analysis_result: LeakAnalysisResult
         :param kwargs: Additional keyword arguments
         """
-        memory_df = self.dataframes['Memory Usage']
-        events_df = self.dataframes['Events Table']
-        allocation_events = events_df[events_df['event_category'] == 'allocation']
-        deallocation_events = events_df[events_df['event_category'] == 'deallocation']
+        memory_df = self.dataframes["Memory Usage"]
+        events_df = self.dataframes["Events Table"]
+        allocation_events = events_df[events_df["event_category"] == "allocation"]
+        deallocation_events = events_df[events_df["event_category"] == "deallocation"]
         ptr_tracking = self._track_pointer_lifecycle()
-        lifetimes = ptr_tracking['lifetime'].dropna()
+        lifetimes = ptr_tracking["lifetime"].dropna()
         time_range = (memory_df.index[-1] - memory_df.index[0]).total_seconds()
         points_per_window = max(len(memory_df) // 50, 1)
 
-        fig_size = kwargs.get('fig_size', (15, 5))
-        fig_dpi = kwargs.get('fig_dpi', 100)
-        colors = plt.get_cmap(kwargs.get('color_map', 'tab10'))
+        fig_size = kwargs.get("fig_size", (15, 5))
+        fig_dpi = kwargs.get("fig_dpi", 100)
+        colors = plt.get_cmap(kwargs.get("color_map", "tab10"))
 
         # Plot 1: Memory Usage Over Time
         plots = [
