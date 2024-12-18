@@ -54,7 +54,7 @@ class TimeSeriesPlot(PlotStrategy):
         linewidth = kwargs.get("linewidth", 1)
 
         zorder = 0
-        if is_top:
+        if is_top and len(ax.collections) > 0:
             zorder = max([line.get_zorder() for line in ax.lines]) + 1
 
         ax.plot(x, y, color=color, label=label, alpha=alpha, zorder=zorder, marker=marker, linewidth=linewidth)
@@ -108,7 +108,7 @@ class ScatterPlot(PlotStrategy):
         s = kwargs.get("s", 1)
 
         zorder = 0
-        if is_top:
+        if is_top and len(ax.collections) > 0:
             zorder = max([scatter.get_zorder() for scatter in ax.collections]) + 1
 
         ax.scatter(x, y, color=color, label=label, alpha=alpha, zorder=zorder, marker=marker, s=s)
@@ -162,7 +162,7 @@ class HistogramPlot(PlotStrategy):
             bins = bins.get("bins", 50)
 
         zorder = 0
-        if is_top:
+        if is_top and len(ax.collections) > 0:
             zorder = max([patch.get_zorder() for patch in ax.patches]) + 1
 
         ax.hist(data, color=color, bins=bins, label=label, alpha=alpha, zorder=zorder)
@@ -207,7 +207,7 @@ class BoxPlot(PlotStrategy):
         is_top = kwargs.get("is_top", False)
 
         zorder = 0
-        if is_top:
+        if is_top and len(ax.collections) > 0:
             zorder = max([patch.get_zorder() for patch in ax.patches]) + 1
 
         ax.boxplot(y, positions=x, patch_artist=True, boxprops=dict(facecolor=color, alpha=alpha), zorder=zorder)
@@ -260,7 +260,7 @@ class HeatmapPlot(PlotStrategy):
             masked_data = data
 
         zorder = 0
-        if is_top:
+        if is_top and len(ax.collections) > 0:
             zorder = max([im.get_zorder() for im in ax.images]) + 1
 
         im = ax.imshow(masked_data, cmap=cmap, aspect="auto", alpha=alpha, zorder=zorder)
@@ -327,7 +327,7 @@ class BarPlot(PlotStrategy):
         is_top = kwargs.get("is_top", False)
 
         zorder = 0
-        if is_top:
+        if is_top and len(ax.collections) > 0:
             zorder = max([patch.get_zorder() for patch in ax.patches]) + 1
 
         ax.bar(x, y, color=color, label=label, alpha=alpha, zorder=zorder)
@@ -370,7 +370,7 @@ class SpanPlot(PlotStrategy):
         is_top = kwargs.get("is_top", False)
 
         zorder = 0
-        if is_top:
+        if is_top and len(ax.collections) > 0:
             zorder = max([collection.get_zorder() for collection in ax.collections]) + 1
 
         ax.axvspan(start, end, color=color, alpha=alpha, zorder=zorder, label=label)
@@ -413,7 +413,7 @@ class VLinePlot(PlotStrategy):
         is_top = kwargs.get("is_top", False)
 
         zorder = 0
-        if is_top:
+        if is_top and len(ax.collections) > 0:
             zorder = max([line.get_zorder() for line in ax.lines]) + 1
 
         ax.axvline(x=x, color=color, alpha=alpha, zorder=zorder, label=label, linestyle=linestyle)
@@ -456,7 +456,7 @@ class HLinePlot(PlotStrategy):
         is_top = kwargs.get("is_top", False)
 
         zorder = 0
-        if is_top:
+        if is_top and len(ax.collections) > 0:
             zorder = max([line.get_zorder() for line in ax.lines]) + 1
 
         ax.axhline(y=y, color=color, alpha=alpha, zorder=zorder, label=label, linestyle=linestyle)
@@ -508,7 +508,7 @@ class AnnotatePlot(PlotStrategy):
         is_top = kwargs.get("is_top", False)
 
         zorder = 0
-        if is_top:
+        if is_top and len(ax.collections) > 0:
             zorder = max([text.get_zorder() for text in ax.texts]) + 1
 
         ax.annotate(text, xy=xy, xytext=xytext, textcoords=textcoords, rotation=rotation,
