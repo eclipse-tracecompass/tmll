@@ -54,6 +54,7 @@ class DataPreprocessor:
         
         if set_index:
             dataframe.set_index(timestamp_column, inplace=True)
+
         return dataframe
         
     @staticmethod
@@ -68,7 +69,10 @@ class DataPreprocessor:
         :return: The resampled DataFrame
         :rtype: pd.DataFrame
         """
-        return dataframe.resample(frequency).mean().interpolate()
+        try:
+            return dataframe.resample(frequency).mean().interpolate()
+        except:
+            return dataframe
     
     @staticmethod
     def trim_dataframe(dataframe: pd.DataFrame, threshold: float = 0.01, min_active_period: int = 5):
