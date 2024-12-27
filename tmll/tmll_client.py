@@ -359,7 +359,15 @@ class TMLLClient:
                             # Get the series name
                             series_name = Tree.get_node_by_id(o_tree, serie.series_id)
                             if series_name:
-                                series_name = series_name.name
+                                prefix = series_name.name
+                                while True:
+                                    parent_node = o_tree.get_node_parent(series_name.id)
+                                    if parent_node:
+                                        prefix = f"{parent_node.name}->{prefix}"
+                                        series_name = parent_node
+                                    else:
+                                        break
+                                series_name = prefix
                             else:
                                 series_name = serie.series_name
 
@@ -415,10 +423,13 @@ class TMLLClient:
                         data = []
                         for row in timegraph.rows:
                             for state in row.states:
+                                node = o_tree.get_node_by_id(row.entry_id)
                                 parent_node = o_tree.get_node_parent(row.entry_id)
                                 parent_id = parent_node.id if parent_node else row.entry_id
                                 data.append({
-                                    "entry_id": parent_id,
+                                    "entry_id": row.entry_id,
+                                    "entry_name": node.name if node else None,
+                                    "parent_id": parent_id,
                                     "start_time": state.start,
                                     "end_time": state.end,
                                     "label": state.label

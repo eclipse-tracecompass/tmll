@@ -28,6 +28,7 @@ class BaseModule(ABC):
         self.experiment: Experiment = experiment
 
         self.dataframes: Dict[str, pd.DataFrame] = {}
+        self.outputs: Optional[List[Output]] = None
         self.data_fetcher: DataFetcher = DataFetcher(client)
         self.data_preprocessor: DataPreprocessor = DataPreprocessor()
 
@@ -75,13 +76,29 @@ class BaseModule(ABC):
         ax.set_xlabel(kwargs.get('fig_xlabel', ''))
         ax.set_ylabel(kwargs.get('fig_ylabel', ''))
 
+        if kwargs.get('fig_xticks', None) is not None:
+            ax.set_xticks(kwargs.get('fig_xticks')) # type: ignore
+        if kwargs.get('fig_yticks', None) is not None:
+            ax.set_yticks(kwargs.get('fig_yticks')) # type: ignore
+        if kwargs.get('fig_xticklabels', None) is not None:
+            ax.set_xticklabels(kwargs.get('fig_xticklabels')) # type: ignore
+        if kwargs.get('fig_yticklabels', None) is not None:
+            ax.set_yticklabels(kwargs.get('fig_yticklabels')) # type: ignore
+        if kwargs.get('fig_xticklabels_rotation', None) is not None:
+            ax.set_xticks(ax.get_xticks())
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=kwargs.get('fig_xticklabels_rotation'))
+        if kwargs.get('fig_yticklabels_rotation', None) is not None:
+            ax.set_yticks(ax.get_yticks())
+            ax.set_yticklabels(ax.get_yticklabels(), rotation=kwargs.get('fig_yticklabels_rotation'))
+
         # Add the legend to the plot (remove duplicates)
         if kwargs.get('legend', True):
             handles, labels = plt.gca().get_legend_handles_labels()
             by_label = dict(zip(labels, handles))
             PlotUtils.set_standard_legend_style(ax, by_label.values(), by_label.keys(), title=kwargs.get('legend_title', None))
         else:
-            ax.get_legend().remove()
+            if ax.get_legend():
+                ax.get_legend().remove()
 
         # Display the plot
         plt.tight_layout()
@@ -105,6 +122,8 @@ class BaseModule(ABC):
         if data is None:
             self.logger.error("No data fetched")
             return
+        
+        self.outputs = outputs
 
         # Process each output
         for output_key, output_data in data.items():
@@ -114,6 +133,10 @@ class BaseModule(ABC):
 
             if shortened not in self.dataframes:
                 df = output_data
+
+                if converted and converted.type == "TIME_GRAPH":
+                    df = df.rename({"start_time": "timestamp"}, axis=1)
+                    df['end_time'] = pd.to_datetime(df['end_time'])
 
                 # Apply common preprocessing steps
                 if kwargs.get('normalize', True):
@@ -125,18 +148,7 @@ class BaseModule(ABC):
                 if kwargs.get('remove_minimum', False):
                     df = self.data_preprocessor.remove_minimum(df)
 
-                # Handle Timegraphs
-                if converted and converted == "TIME_GRAPH":
-                    df["duration"] = df["end_time"] - df["start_time"]
-                    df["timestamp"] = df["start_time"]
-                    df.drop(columns=["start_time", "end_time", "entry_id"], inplace=True, errors="ignore")
-
-                    separated = self.data_preprocessor.separate_timegraph(df, "label")
-                    for key, value in separated.items():
-                        if not value.empty:
-                            self.dataframes[f"{shortened}${key}"] = value
-                else:
-                    self.dataframes[shortened] = df
+                self.dataframes[shortened] = df
 
         # Filter out dataframes with less than min_size instances
         min_size = kwargs.get('min_size', 1)
