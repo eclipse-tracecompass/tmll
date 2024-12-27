@@ -19,16 +19,17 @@ class PlotFactory:
         """
 
         plot_types = {
-            'time_series': TimeSeriesPlot(),
-            'scatter': ScatterPlot(),
-            'histogram': HistogramPlot(),
-            'box': BoxPlot(),
-            'heatmap': HeatmapPlot(),
-            'bar': BarPlot(),
-            'span': SpanPlot(),
-            'vline': VLinePlot(),
-            'hline': HLinePlot(),
-            'annotate': AnnotatePlot(),
+            "time_series": TimeSeriesPlot(),
+            "scatter": ScatterPlot(),
+            "histogram": HistogramPlot(),
+            "box": BoxPlot(),
+            "heatmap": HeatmapPlot(),
+            "bar": BarPlot(),
+            "span": SpanPlot(),
+            "vline": VLinePlot(),
+            "hline": HLinePlot(),
+            "annotate": AnnotatePlot(),
+            "fill_between": FillBetweenPlot(),
         }
 
         return plot_types.get(plot_type, TimeSeriesPlot())
