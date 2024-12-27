@@ -518,3 +518,53 @@ class AnnotatePlot(PlotStrategy):
         ax.annotate(text, xy=xy, xytext=xytext, textcoords=textcoords, rotation=rotation,
                     verticalalignment=verticalalignment, color=color, alpha=alpha, zorder=zorder)
         self.set_title_and_labels(ax, ax_title, "", "")
+
+
+class FillBetweenPlot(PlotStrategy):
+    """A concrete class to implement the fill between plot strategy."""
+
+    def plot(self, ax: Axes, data: Optional[Any] = None, **kwargs) -> None:
+        """
+        Plot the fill between the data on the given axes.
+
+        :param ax: The axes to plot the data.
+        :type ax: Axes
+        :param data: The data to plot.
+        :type data: Any, optional
+        :param x: The name of the x-axis column.
+        :type x: str, optional
+        :param y1: The y-coordinate of the first line.
+        :type y1: float, optional
+        :param y2: The y-coordinate of the second line.
+        :type y2: float, optional
+        :param where: The condition to fill between. Default is None.
+        :type where: Any, optional
+        :param ax_title: The title of the plot. Default is "Fill Between Plot".
+        :type ax_title: str, optional
+        :param color: The color of the fill. Default is "blue".
+        :type color: str, optional
+        :param label: The label for the plot legend. Default is None.
+        :type label: str, optional
+        :param alpha: The transparency of the fill. Default is 0.5.
+        :type alpha: float, optional
+        :param is_top: Whether to place this plot on top of others. Default is False.
+        :type is_top: bool, optional
+        """
+        x, _ = self._get_x_y(data, **kwargs)
+
+        y1 = kwargs.get("y1", 0)
+        y2 = kwargs.get("y2", 0)
+        where = kwargs.get("where", None)
+
+        ax_title = kwargs.get("ax_title", "Fill Between Plot")
+        color = kwargs.get("color", "blue")
+        label = kwargs.get("label", None)
+        alpha = kwargs.get("alpha", 0.5)
+        is_top = kwargs.get("is_top", False)
+
+        zorder = 0
+        if is_top and len(ax.collections) > 0:
+            zorder = max([collection.get_zorder() for collection in ax.collections]) + 1
+
+        ax.fill_between(x, y1, y2, where=where, color=color, label=label, alpha=alpha, zorder=zorder)
+        self.set_title_and_labels(ax, ax_title, "", "")
