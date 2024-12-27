@@ -250,6 +250,7 @@ class HeatmapPlot(PlotStrategy):
         cmap = kwargs.get("cmap", "viridis")
         annot = kwargs.get("annot", True)
         fmt = kwargs.get("fmt", ".2f")
+        cbar = kwargs.get("cbar", True)
         label = kwargs.get("label", None)
         alpha = kwargs.get("alpha", 1.0)
         is_top = kwargs.get("is_top", False)
@@ -282,6 +283,9 @@ class HeatmapPlot(PlotStrategy):
 
         if label:
             im.set_label(label)
+
+        if cbar:
+            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
         self.set_title_and_labels(ax, ax_title, "", "")
 
