@@ -91,8 +91,7 @@ class MemoryLeakDetection(BaseModule):
 
     def _process(self, outputs: Optional[List[Output]] = None, **kwargs) -> None:
         super()._process(outputs=outputs,
-                         fetch_params={"table_line_column_ids": [3, 4, 14]},  # TODO: Dynamic Column IDs for Event type, Contents, Timestamp ns
-                         normalize=kwargs.get("normalize", False),
+                         fetch_params={"table_line_column_names": ["event type", "contents", "timestamp ns"]},
                          resample=kwargs.get("resample", False),
                          align_timestamps=False,
                          **kwargs)
@@ -102,6 +101,11 @@ class MemoryLeakDetection(BaseModule):
 
         if "Events Table" in self.dataframes:
             df = self.dataframes["Events Table"]
+            if not all(col in df.columns for col in ["size", "ptr"]):
+                self.logger.warning("Events table does not contain necessary columns for memory leak analysis")
+                self.dataframes["Events Table"] = pd.DataFrame()
+                return
+
             df["event_category"] = "other"
             df.loc[df["Event type"].str.contains("malloc", na=False), "event_category"] = "allocation"
             df.loc[df["Event type"].str.contains("free", na=False), "event_category"] = "deallocation"
@@ -157,6 +161,16 @@ class MemoryLeakDetection(BaseModule):
         :return: The results of the memory leak analysis
         :rtype: LeakAnalysisResult
         """
+        if not all(output.name in self.dataframes for output in self.BASE_OUTPUTS):
+            self.logger.error("Missing required data for memory leak analysis")
+            return LeakAnalysisResult(
+                severity=MemoryLeakSeverity.NONE,
+                confidence_score=0,
+                metrics=MemoryMetrics(0, 0, 0, 0, 0, 0, 0, 0),
+                detected_patterns=[],
+                suspicious_locations=pd.DataFrame()
+            )
+
         self.window_size = window_size
         self.fragmentation_threshold = fragmentation_threshold
         self.slope_threshold = slope_threshold
@@ -327,6 +341,7 @@ class MemoryLeakDetection(BaseModule):
         :return: The calculated memory metrics
         :rtype: MemoryMetrics
         """
+        # Calculate unreleased allocations
         unreleased = len(ptr_tracking[ptr_tracking["deallocation_time"].isna()])
 
         # Calculate memory fragmentation score
@@ -579,7 +594,7 @@ class MemoryLeakDetection(BaseModule):
                 "Maximum Lifetime": f"{self._convert_time(lifetimes.max())}"
             })
 
-    def plot(self, analysis_result: LeakAnalysisResult, **kwargs) -> None:
+    def plot_memory_leak_analysis(self, analysis_result: LeakAnalysisResult, **kwargs) -> None:
         """
         Plot memory usage trends and analysis results.
 

@@ -467,8 +467,12 @@ class TMLLClient:
                     start_index = int(kwargs.get("table_line_start_index", 0))  # Start index of the table data. Default is 0 (i.e., the first row)
                     line_count = int(kwargs.get("table_line_count", 65536))  # 65536 is the maximum value that the TSP server accepts
                     column_ids = list(map(int, kwargs.get("table_line_column_ids", [])))  # Which columns to fetch from the table
-                    # Search direction for the table data (i.e., NEXT or PREVIOUS)
-                    search_direction = kwargs.get("table_line_search_direction", "NEXT")
+                    search_direction = kwargs.get("table_line_search_direction", "NEXT")  # Search direction for the table data (i.e., NEXT or PREVIOUS)
+
+                    # Convert table_line_column_names into column_ids if it is provided
+                    if not column_ids and "table_line_column_names" in kwargs:
+                        column_ids = [int(c.id) for c in columns if c.name.lower() in map(str.lower, kwargs.get("table_line_column_names", []))]
+
                     while True:
                         # Prepare the parameters for the TSP server
                         parameters = {
