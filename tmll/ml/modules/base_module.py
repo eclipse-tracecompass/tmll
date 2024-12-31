@@ -100,6 +100,8 @@ class BaseModule(ABC):
             if ax.get_legend():
                 ax.get_legend().remove()
 
+        ax.grid(kwargs.get('grid', True))
+
         # Display the plot
         plt.tight_layout()
         plt.show()
