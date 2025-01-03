@@ -23,6 +23,7 @@ from tmll.tsp.tsp.response import ResponseStatus
 from tmll.tsp.tsp.tsp_client import TspClient
 
 from tmll.services.tsp_installer import TSPInstaller
+from tmll.services.instrumentation import TMLLInstrumentation
 
 from tmll.utils.name_generator import NameGenerator
 
@@ -532,6 +533,30 @@ class TMLLClient:
         self.logger.info("All data fetched successfully.")
 
         return datasets
+
+    @staticmethod
+    def enable_instrumentation(instrumentation_file: Optional[str] = None, instrument_kernel: bool = False, verbose: bool = True) -> None:
+        """
+        Enable the instrumentation for user-space (i.e., Python), and if specified, for kernel-space (via LTTng).
+
+        :param instrumentation_file: Instrumentation file to use for storing the instrumentation data
+        :type instrumentation_file: Optional[str]
+        :param instrument_kernel: Flag to enable the kernel-space instrumentation (i.e., LTTng) - Only for Linux
+        :type instrument_kernel: bool
+        :param verbose: Flag to enable/disable the verbose mode for LTTng
+        :type verbose: bool
+        """
+        TMLLInstrumentation.enable(instrumentation_file, instrument_kernel, verbose)
+
+    @staticmethod
+    def disable_instrumentation(convert_to_json: bool = False) -> None:
+        """
+        Disable the instrumentation for user-space (i.e., Python) and kernel-space (via LTTng).
+
+        :param convert_to_json: Flag to convert the instrumentation data (user-space) to JSON format
+        :type convert_to_json: bool
+        """
+        TMLLInstrumentation.disable(convert_to_json)
 
 
 class TableProcessor:
