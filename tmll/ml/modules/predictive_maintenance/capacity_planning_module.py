@@ -664,13 +664,15 @@ class CapacityPlanning(BaseModule):
                                 f"Consider immediate load balancing or scaling up CPU capacity."
                             )
                         elif resource_type.name == ResourceType.MEMORY.name:
+                            val, unit = self._format_bytes(threshold)
                             recommendations["Immediate Actions"].append(
-                                f"Critical: {resource_name} will exceed {threshold}% in {time_to_violation} "
+                                f"Critical: {resource_name} will exceed {val} {unit} in {time_to_violation} "
                                 f"Consider freeing up memory or increasing available memory."
                             )
                         else:
+                            val, unit = self._format_bytes(threshold)
                             recommendations["Immediate Actions"].append(
-                                f"Critical: {resource_name} will exceed {threshold}% in {time_to_violation}. "
+                                f"Critical: {resource_name} will exceed {val} {unit}/s in {time_to_violation}. "
                                 f"Consider cleanup or adding storage capacity."
                             )
 
@@ -683,13 +685,15 @@ class CapacityPlanning(BaseModule):
                                 f"Plan for CPU capacity increase or workload redistribution."
                             )
                         elif resource_type.name == ResourceType.MEMORY.name:
+                            val, unit = self._format_bytes(threshold)
                             recommendations["Short-term Planning"].append(
-                                f"{resource_name} will exceed {threshold}% in {time_to_violation} "
+                                f"{resource_name} will exceed {val} {unit} in {time_to_violation} "
                                 f"Plan for memory upgrade or optimization."
                             )
                         else:
+                            val, unit = self._format_bytes(threshold)
                             recommendations["Short-term Planning"].append(
-                                f"{resource_name} will exceed {threshold}% in {time_to_violation}. "
+                                f"{resource_name} will exceed {val} {unit}/s in {time_to_violation}. "
                                 f"Plan for storage expansion or archival."
                             )
 
@@ -781,6 +785,21 @@ class CapacityPlanning(BaseModule):
                     "alpha": 0.8,
                     "linewidth": 2
                 })
+
+                # Connect the end of historical data to the start of forecast data
+                if not historical_data.empty and not forecast_data.empty:
+                    connection_data = pd.Series(
+                        [historical_data.iloc[-1], forecast_data.iloc[0]],
+                        index=[historical_data.index[-1], forecast_data.index[0]]
+                    )
+                    plots.append({
+                        "plot_type": "time_series",
+                        "data": connection_data,
+                        "label": None,
+                        "color": colors(1),
+                        "alpha": 0.8,
+                        "linewidth": 2,
+                    })
 
                 # Plot forecast
                 plots.append({
