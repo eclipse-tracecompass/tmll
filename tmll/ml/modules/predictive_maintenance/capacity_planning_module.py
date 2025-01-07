@@ -3,8 +3,8 @@ from enum import Enum, auto
 from matplotlib import pyplot as plt
 import pandas as pd
 import numpy as np
-import re
 from typing import List, Dict, Optional, Tuple, cast
+
 from sklearn.preprocessing import StandardScaler
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.vector_ar.var_model import VAR
@@ -13,6 +13,8 @@ from statsmodels.tsa.stattools import adfuller, acf, pacf
 from tmll.ml.modules.base_module import BaseModule
 from tmll.common.models.experiment import Experiment
 from tmll.common.models.output import Output
+from tmll.ml.modules.common.statistics import Statistics
+from tmll.ml.utils.formatter import Formatter
 from tmll.tmll_client import TMLLClient
 from tmll.ml.utils.document_generator import DocumentGenerator
 
@@ -46,7 +48,6 @@ class ResourceMetrics:
     forecast_timestamps: List[pd.Timestamp]
     threshold_violations: List[Tuple[pd.Timestamp, pd.Timestamp, float, bool]]
     utilization_pattern: str
-    units: str
 
 
 @dataclass
@@ -118,55 +119,6 @@ class CapacityPlanning(BaseModule):
             self.combined_df[column] = scaler.fit_transform(np.array(self.combined_df[column]).reshape(-1, 1))
             self.scalers[column] = scaler
 
-    def _format_bytes(self, bytes_value: float) -> Tuple[float, str]:
-        """
-        Convert bytes to human-readable format with appropriate unit.
-
-        :param bytes_value: Value in bytes
-        :type bytes_value: float
-        :return: Tuple of (converted value, unit)
-        :rtype: Tuple[float, str]
-        """
-        units = ["B", "KB", "MB", "GB", "TB"]
-        unit_idx = 0
-        value = float(bytes_value)
-
-        while value >= 1024 and unit_idx < len(units) - 1:
-            value /= 1024
-            unit_idx += 1
-
-        return value, units[unit_idx]
-
-    def _convert_time(self, time_in_seconds: float) -> str:
-        """
-        Convert seconds to a human-readable string with appropriate units.
-
-        :param time: The time in seconds
-        :type time: float
-        :return: The time in human-readable format
-        :rtype: str
-        """
-        units = ["s", "m", "h"]
-        thresholds = [1, 60, 3600]
-        time = abs(time_in_seconds)
-
-        # If time is less than 1 second, convert to smaller units
-        if time < 1:
-            if time < 0.000001:  # nanoseconds
-                return f"{time * 1e9:.2f} ns"
-            elif time < 0.001:  # microseconds
-                return f"{time * 1e6:.2f} us"
-            else:  # milliseconds
-                return f"{time * 1000:.2f} ms"
-
-        # If time is greater than 1 second, convert to larger units
-        for i in range(len(units) - 1, -1, -1):
-            if time >= thresholds[i]:
-                converted_time = time / thresholds[i]
-                return f"{converted_time:.2f} {units[i]}"
-
-        return f"{time:.2f} s"
-
     def _analyze_utilization_pattern(self, series: pd.Series) -> str:
         """
         Analyze the utilization pattern of a resource.
@@ -176,24 +128,34 @@ class CapacityPlanning(BaseModule):
         :return: Description of the utilization pattern
         :rtype: str
         """
-        # Calculate only for the 99th percentile of data to avoid outliers
-        data = series[series < series.quantile(0.99)]
+        cv = Statistics.get_coefficient_of_variation(series)
 
-        mean = data.mean()
-        std = data.std()
-        cv = std / mean if mean > 0 else float("inf")
+        return (
+            "No variation" if cv < 0 else
+            "Very stable" if cv < 0.1 else
+            "Stable" if cv < 0.3 else
+            "Moderate variation" if cv < 0.6 else
+            "Highly variable"
+        )
 
-        if cv == float("inf"):
-            return "No usage"
+    def _get_formatted_resource_property(self, resource_property: float, resource_type: ResourceType) -> str:
+        """
+        Format resource property based on its type.
 
-        if cv < 0.1:
-            return "Very stable"
-        elif cv < 0.3:
-            return "Stable"
-        elif cv < 0.6:
-            return "Moderate variation"
+        :param resource_property: Resource property value
+        :type resource_property: float
+        :param resource_type: Type of resource (CPU, Memory, Disk)
+        :type resource_type: ResourceType
+        :return: Formatted threshold string
+        :rtype: str
+        """
+        if resource_type.name == ResourceType.CPU.name:
+            return f"{resource_property:.2f}%"
         else:
-            return "Highly variable"
+            val, unit = Formatter.format_bytes(resource_property)
+            if resource_type.name == ResourceType.DISK.name:
+                return f"{val:.2f} {unit}/s"
+            return f"{val:.2f} {unit}"
 
     def _calculate_pdq(self, series: pd.Series, max_lag: int = 20) -> Tuple[int, int, int]:
         """
@@ -250,37 +212,6 @@ class CapacityPlanning(BaseModule):
             freq = "1" + freq
 
         return freq
-
-    def _parse_time_string(self, time_str: str) -> float:
-        """
-        Parse a time string into seconds.
-
-        :param time_str: Time string (e.g., '1s', '500ms', '24h', '7d')
-        :type time_str: str
-        :return: Time in seconds
-        :rtype: float
-        :raises ValueError: If the time string format is invalid
-        """
-        pattern = r'^(\d+(?:\.\d+)?)(us|ms|s|m|h|d)$'
-        match = re.match(pattern, time_str)
-
-        if not match:
-            return 1.0
-
-        value, unit = float(match.group(1)), match.group(2)
-
-        conversion = {
-            'ns': 1e-9,
-            'us': 1e-6,
-            'ms': 1e-3,
-            's': 1,
-            'm': 60,
-            'h': 3600,
-            'd': 86400,
-            'w': 604800
-        }
-
-        return value * conversion[unit]
 
     def _forecast_arima(self, series: pd.Series, forecast_steps: int) -> Tuple[List[float], List[pd.Timestamp]]:
         """
@@ -386,7 +317,7 @@ class CapacityPlanning(BaseModule):
         :return: List of threshold violation periods
         :rtype: List[Tuple[pd.Timestamp, float]]
         """
-        window_seconds = self._parse_time_string(window_size)
+        window_seconds = Formatter.parse_time_to_seconds(window_size)
         violations = []
 
         violation_start = None
@@ -530,8 +461,7 @@ class CapacityPlanning(BaseModule):
                     forecast_values=forecast_values,
                     forecast_timestamps=forecast_timestamps,
                     threshold_violations=violations,
-                    utilization_pattern=self._analyze_utilization_pattern(original_series),
-                    units=units
+                    utilization_pattern=self._analyze_utilization_pattern(original_series)
                 )
 
             results[resource_type] = CapacityForecastResult(
@@ -565,32 +495,28 @@ class CapacityPlanning(BaseModule):
                 "Forecast Method": result.forecast_method.name,
             }
 
-            if resource_type.name == ResourceType.CPU.name:
-                parameters["CPU Threshold"] = f"{result.thresholds_used.cpu_threshold}%"
-            elif resource_type.name == ResourceType.MEMORY.name:
-                val, unit = self._format_bytes(result.thresholds_used.memory_threshold)
-                parameters["Memory Threshold"] = f"{val:.2f} {unit}"
-            else:
-                val, unit = self._format_bytes(result.thresholds_used.disk_threshold)
-                parameters["Disk Threshold"] = f"{val:.2f} {unit}/s"
+            parameters[f"{resource_type.name} Threshold"] = self._get_formatted_resource_property(
+                result.thresholds_used.cpu_threshold if resource_type.name == ResourceType.CPU.name else
+                result.thresholds_used.memory_threshold if resource_type.name == ResourceType.MEMORY.name else
+                result.thresholds_used.disk_threshold,
+                resource_type
+            )
 
             DocumentGenerator.metrics_group("Analysis Parameters", parameters)
 
             # Resource metrics
             for resource_name, metrics in result.resource_metrics.items():
                 resource_metrics = {
-                    "Current Usage": f"{metrics.current_usage:.1f}{metrics.units}",
-                    "Peak Usage": f"{metrics.peak_usage:.1f}{metrics.units}",
-                    "Average Usage": f"{metrics.average_usage:.1f}{metrics.units}",
+                    "Current Usage": self._get_formatted_resource_property(metrics.current_usage, resource_type),
+                    "Peak Usage": self._get_formatted_resource_property(metrics.peak_usage, resource_type),
+                    "Average Usage": self._get_formatted_resource_property(metrics.average_usage, resource_type),
                     "Utilization Pattern": metrics.utilization_pattern
                 }
 
                 if resource_type.name != ResourceType.CPU.name:
                     for key in ["Current Usage", "Peak Usage", "Average Usage"]:
-                        value, unit = self._format_bytes(metrics.__dict__[key.lower().replace(" ", "_")])
-                        resource_metrics[key] = f"{value:.2f} {unit}"
-                        if resource_type.name == ResourceType.DISK.name:
-                            resource_metrics[key] += "/s"
+                        resource_metrics[key] = self._get_formatted_resource_property(metrics.__dict__[key.lower().replace(" ", "_")],
+                                                                                      resource_type)
 
                 if metrics.threshold_violations:
                     next_violation = metrics.threshold_violations[0]
@@ -607,18 +533,12 @@ class CapacityPlanning(BaseModule):
                     violation_rows = []
                     for i in range(num_sig_violations):
                         start_time, end_time, max_usage, _ = metrics.threshold_violations[i]
-                        duration = self._convert_time((end_time - start_time).total_seconds())
-                        if resource_type.name == ResourceType.CPU.name:
-                            max_usage = f"{max_usage:.2f}%"
-                        else:
-                            max_value, max_unit = self._format_bytes(max_usage)
-                            max_usage = f"{max_value:.2f} {max_unit}"
-                            if resource_type.name == ResourceType.DISK.name:
-                                max_usage += "/s"
+                        time_val, time_unit = Formatter.format_seconds((end_time - start_time).total_seconds())
+                        max_usage = self._get_formatted_resource_property(max_usage, resource_type)
 
                         violation_rows.append([start_time.strftime("%Y-%m-%d %H:%M:%S.%f"),
                                                end_time.strftime("%Y-%m-%d %H:%M:%S.%f"),
-                                               duration, max_usage])
+                                               f"{time_val:.2f} {time_unit}", max_usage])
                     DocumentGenerator.table(
                         violation_headers,
                         violation_rows,
@@ -657,43 +577,41 @@ class CapacityPlanning(BaseModule):
 
                     # Immediate actions for imminent violations
                     if time_to_violation < 3600:  # Less than 1 hour
-                        time_to_violation = self._convert_time(time_to_violation)
+                        time_val, time_unit = Formatter.format_seconds(time_to_violation)
+                        exceed_value = self._get_formatted_resource_property(threshold, resource_type)
                         if resource_type.name == ResourceType.CPU.name:
                             recommendations["Immediate Actions"].append(
-                                f"Critical: {resource_name} will exceed {threshold}% in {time_to_violation}. "
+                                f"Critical: {resource_name} will exceed {exceed_value} in {time_val:.2f} {time_unit}. "
                                 f"Consider immediate load balancing or scaling up CPU capacity."
                             )
                         elif resource_type.name == ResourceType.MEMORY.name:
-                            val, unit = self._format_bytes(threshold)
                             recommendations["Immediate Actions"].append(
-                                f"Critical: {resource_name} will exceed {val} {unit} in {time_to_violation} "
+                                f"Critical: {resource_name} will exceed {exceed_value} in {time_val:.2f} {time_unit} "
                                 f"Consider freeing up memory or increasing available memory."
                             )
                         else:
-                            val, unit = self._format_bytes(threshold)
                             recommendations["Immediate Actions"].append(
-                                f"Critical: {resource_name} will exceed {val} {unit}/s in {time_to_violation}. "
+                                f"Critical: {resource_name} will exceed {exceed_value} in {time_val:.2f} {time_unit}. "
                                 f"Consider cleanup or adding storage capacity."
                             )
 
                     # Short-term planning for upcoming violations
                     elif time_to_violation < 86400:  # Less than 24 hours
-                        time_to_violation = self._convert_time(time_to_violation)
+                        time_val, time_unit = Formatter.format_seconds(time_to_violation)
+                        exceed_value = self._get_formatted_resource_property(threshold, resource_type)
                         if resource_type.name == ResourceType.CPU.name:
                             recommendations["Short-term Planning"].append(
-                                f"{resource_name} will exceed {threshold}% in {time_to_violation} "
+                                f"{resource_name} will exceed {exceed_value} in {time_val:.2f} {time_unit} "
                                 f"Plan for CPU capacity increase or workload redistribution."
                             )
                         elif resource_type.name == ResourceType.MEMORY.name:
-                            val, unit = self._format_bytes(threshold)
                             recommendations["Short-term Planning"].append(
-                                f"{resource_name} will exceed {val} {unit} in {time_to_violation} "
+                                f"{resource_name} will exceed {exceed_value} in {time_val:.2f} {time_unit} "
                                 f"Plan for memory upgrade or optimization."
                             )
                         else:
-                            val, unit = self._format_bytes(threshold)
                             recommendations["Short-term Planning"].append(
-                                f"{resource_name} will exceed {val} {unit}/s in {time_to_violation}. "
+                                f"{resource_name} will exceed {exceed_value} in {time_val:.2f} {time_unit}. "
                                 f"Plan for storage expansion or archival."
                             )
 
@@ -706,17 +624,8 @@ class CapacityPlanning(BaseModule):
 
                 # Long-term strategy based on peak usage
                 if peak_usage > threshold * 0.9:
-                    if resource_type.name == ResourceType.CPU.name:
-                        peak_usage_str = f"{peak_usage:.1f}%"
-                        threshold_str = f"{threshold}%"
-                    else:
-                        peak_value, peak_unit = self._format_bytes(peak_usage)
-                        threshold_value, threshold_unit = self._format_bytes(threshold)
-                        peak_usage_str = f"{peak_value:.1f} {peak_unit}"
-                        threshold_str = f"{threshold_value:.1f} {threshold_unit}"
-                        if resource_type.name == ResourceType.DISK.name:
-                            peak_usage_str += "/s"
-                            threshold_str += "/s"
+                    peak_usage_str = self._get_formatted_resource_property(peak_usage, resource_type)
+                    threshold_str = self._get_formatted_resource_property(threshold, resource_type)
 
                     recommendations["Long-term Strategy"].append(
                         f"{resource_name} has peak usage ({peak_usage_str}) approaching or bypassing the threshold ({threshold_str}). "
@@ -820,22 +729,14 @@ class CapacityPlanning(BaseModule):
                 else:
                     threshold_line = result.thresholds_used.disk_threshold
 
-                units = metrics.units
-                threshold = threshold_line
-                if resource_type.name != ResourceType.CPU.name:
-                    threshold_value, threshold_unit = self._format_bytes(threshold)
-                    threshold = round(threshold_value, 2)
-                    units = threshold_unit
-
-                    if resource_type.name == ResourceType.DISK.name:
-                        units += "/s"
+                threshold_str = self._get_formatted_resource_property(threshold_line, resource_type)
 
                 plots.append({
                     "plot_type": "hline",
                     "y": threshold_line,
                     "color": "red",
                     "linestyle": "--",
-                    "label": f"Threshold ({threshold} {units})",
+                    "label": f"Threshold ({threshold_str})",
                     "alpha": 0.5
                 })
 
@@ -852,17 +753,8 @@ class CapacityPlanning(BaseModule):
                         "alpha": 0.2
                     })
 
-                if resource_type.name == ResourceType.CPU.name:
-                    usage_str = f"{metrics.average_usage:.1f}%"
-                    peak_str = f"{metrics.peak_usage:.1f}%"
-                else:
-                    avg_val, avg_unit = self._format_bytes(metrics.average_usage)
-                    peak_val, peak_unit = self._format_bytes(metrics.peak_usage)
-                    usage_str = f"{avg_val:.1f} {avg_unit}"
-                    peak_str = f"{peak_val:.1f} {peak_unit}"
-                    if resource_type.name == ResourceType.DISK.name:
-                        usage_str += "/s"
-                        peak_str += "/s"
+                usage_str = self._get_formatted_resource_property(metrics.average_usage, resource_type)
+                peak_str = self._get_formatted_resource_property(metrics.peak_usage, resource_type)
 
                 title = (
                     f"{resource_type.name} Capacity Forecast: {resource_name}\n"
@@ -873,12 +765,7 @@ class CapacityPlanning(BaseModule):
 
                 max_value = max(historical_data.max(), forecast_data.max(), threshold_line)
                 y_ticks = np.linspace(0, max_value, 10)
-                if resource_type.name == ResourceType.CPU.name:
-                    y_tick_labels = [f"{tick:.0f}%" for tick in y_ticks]
-                elif resource_type.name == ResourceType.MEMORY.name:
-                    y_tick_labels = [f"{self._format_bytes(tick)[0]:.0f} {self._format_bytes(tick)[1]}" for tick in y_ticks]
-                else:
-                    y_tick_labels = [f"{self._format_bytes(tick)[0]:.0f} {self._format_bytes(tick)[1]}/s" for tick in y_ticks]
+                y_tick_labels = [self._get_formatted_resource_property(tick, resource_type) for tick in y_ticks]
 
                 self._plot(
                     plots,
