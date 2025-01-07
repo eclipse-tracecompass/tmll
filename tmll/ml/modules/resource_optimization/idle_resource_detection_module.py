@@ -21,7 +21,7 @@ class ResourceType(Enum):
 @dataclass
 class ResourceThresholds:
     cpu_idle_threshold: float = 10.0  # percentage
-    memory_idle_threshold: float = 20.0  # percentage of peak memory
+    memory_idle_threshold: float = 10 * 1024 * 1024  # bytes
     disk_idle_threshold: float = 5.0 * 1024 * 1024  # bytes/s
     idle_percent_threshold: float = 30.0  # percentage of time resource must be idle
 
@@ -222,8 +222,7 @@ class IdleResourceDetection(BaseModule):
             idle_mask = series < threshold
         elif resource_type == ResourceType.MEMORY:
             threshold = self.thresholds.memory_idle_threshold
-            total_memory = series.max()
-            idle_mask = series < (total_memory * threshold / 100)
+            idle_mask = series < threshold
         else:
             threshold = self.thresholds.disk_idle_threshold
             idle_mask = series < threshold
@@ -258,14 +257,15 @@ class IdleResourceDetection(BaseModule):
         if series.empty:
             return "No data"
 
-        if resource_type == ResourceType.CPU:
-            mean = series.mean()
-            std = series.std()
-            cv = std / mean if mean > 0 else float("inf")
-        else:
-            # For memory and disk, look at variation relative to peak
-            peak = series.max()
-            cv = series.std() / peak if peak > 0 else float("inf")
+        # Calculate only for the 99th percentile of data to avoid outliers
+        data = series[series < series.quantile(0.99)]
+
+        mean = data.mean()
+        std = data.std()
+        cv = std / mean if mean > 0 else float("inf")
+
+        if cv == float("inf"):
+            return "No usage"
 
         if cv < 0.1:
             return "Very stable"
@@ -516,7 +516,8 @@ class IdleResourceDetection(BaseModule):
                     if resource_type.name == ResourceType.CPU.name:
                         threshold_metrics["CPU Idle Threshold"] = f"{result.thresholds_used.cpu_idle_threshold}%"
                     elif resource_type.name == ResourceType.MEMORY.name:
-                        threshold_metrics["Memory Idle Threshold"] = f"{result.thresholds_used.memory_idle_threshold}% of peak"
+                        val, unit = self._format_bytes(result.thresholds_used.memory_idle_threshold)
+                        threshold_metrics["Memory Idle Threshold"] = f"{val:.2f} {unit}"
                     else:
                         val, unit = self._format_bytes(result.thresholds_used.disk_idle_threshold)
                         threshold_metrics["Disk Idle Threshold"] = f"{val:.2f} {unit}/s"
@@ -566,7 +567,7 @@ class IdleResourceDetection(BaseModule):
                             DocumentGenerator.table(
                                 idle_period_headers,
                                 idle_period_rows,
-                                f"Top 5 Idle Periods for {resource_name}"
+                                f"Top Idle Periods for {resource_name}"
                             )
 
         if scheduling_results:
@@ -794,12 +795,11 @@ class IdleResourceDetection(BaseModule):
                     threshold_line = self.thresholds.cpu_idle_threshold
                     ylabel = "CPU Usage (%)"
                 elif resource_type.name == ResourceType.MEMORY.name:
-                    max_usage = df[df.columns[0]].max()
-                    threshold_line = max_usage * self.thresholds.memory_idle_threshold / 100
-                    ylabel = "Memory Usage (bytes)"
+                    threshold_line = self.thresholds.memory_idle_threshold
+                    ylabel = "Memory Usage"
                 else:
                     threshold_line = self.thresholds.disk_idle_threshold
-                    ylabel = "Disk Throughput (bytes/s)"
+                    ylabel = "Disk Throughput"
 
                 units = metrics.units
                 threshold = threshold_line
@@ -832,6 +832,15 @@ class IdleResourceDetection(BaseModule):
                         usage_str += "/s"
                         peak_str += "/s"
 
+                max_value = max(df.max().max(), threshold_line)
+                y_ticks = np.linspace(0, max_value, 10)
+                if resource_type.name == ResourceType.CPU.name:
+                    y_tick_labels = [f"{tick:.0f}%" for tick in y_ticks]
+                elif resource_type.name == ResourceType.MEMORY.name:
+                    y_tick_labels = [f"{self._format_bytes(tick)[0]:.0f} {self._format_bytes(tick)[1]}" for tick in y_ticks]
+                else:
+                    y_tick_labels = [f"{self._format_bytes(tick)[0]:.0f} {self._format_bytes(tick)[1]}/s" for tick in y_ticks]
+
                 self._plot(
                     plots,
                     plot_size=fig_size,
@@ -841,7 +850,9 @@ class IdleResourceDetection(BaseModule):
                     f"Avg: {usage_str}, Peak: {peak_str}, "
                     f"Pattern: {metrics.usage_pattern})",
                     fig_xlabel="Time",
-                    fig_ylabel=ylabel
+                    fig_ylabel=ylabel,
+                    fig_yticks=y_ticks,
+                    fig_yticklabels=y_tick_labels
                 )
 
     def plot_cpu_scheduling(self, scheduling_results: Dict[int, SchedulingMetrics], **kwargs) -> None:
@@ -897,7 +908,7 @@ class IdleResourceDetection(BaseModule):
             "annot": False,
             "vmin": 0,
             "vmax": 100
-        }], plot_size=(fig_size[0], len(cpu_ids)), dpi=fig_dpi,
+        }], plot_size=(fig_size[0], len(cpu_ids)), dpi=fig_dpi, grid=False,
             fig_title="CPU Utilization Heatmap", fig_xlabel="Time", fig_ylabel="CPU Cores",
             fig_xticks=xtick_positions, fig_xticklabels=xtick_labels,
             fig_yticks=range(len(cpu_ids)), fig_yticklabels=[f"CPU {id + 1}" for id in cpu_ids])
@@ -925,7 +936,7 @@ class IdleResourceDetection(BaseModule):
                     })
 
             self._plot(plots, plot_size=fig_size, dpi=fig_dpi,
-                       fig_title="Task Distribution Over Time",
+                       fig_title=f"Task Distribution Over Time - CPU {cpu_id + 1}",
                        fig_ylabel="Tasks", fig_xlabel="Time",
                        grid=True, grid_alpha=0.3)
 
