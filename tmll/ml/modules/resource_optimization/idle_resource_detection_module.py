@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 from tmll.ml.modules.base_module import BaseModule
 from tmll.common.models.experiment import Experiment
 from tmll.common.models.output import Output
+from tmll.ml.modules.common.statistics import Statistics
 from tmll.ml.utils.document_generator import DocumentGenerator
+from tmll.ml.utils.formatter import Formatter
 from tmll.tmll_client import TMLLClient
 
 
@@ -34,7 +36,6 @@ class ResourceMetrics:
     total_duration: float
     idle_periods: List[Tuple[pd.Timestamp, pd.Timestamp]]
     usage_pattern: str
-    units: str
 
 
 @dataclass
@@ -157,54 +158,24 @@ class IdleResourceDetection(BaseModule):
 
         self.dataframes["Resources Status"] = resources_df
 
-    def _format_bytes(self, bytes_value: float) -> Tuple[float, str]:
+    def _get_formatted_resource_property(self, resource_property: float, resource_type: ResourceType) -> str:
         """
-        Convert bytes to human-readable format with appropriate unit.
+        Format resource property based on its type.
 
-        :param bytes_value: Value in bytes
-        :type bytes_value: float
-        :return: Tuple of (converted value, unit)
-        :rtype: Tuple[float, str]
-        """
-        units = ["B", "KB", "MB", "GB", "TB"]
-        unit_idx = 0
-        value = float(bytes_value)
-
-        while value >= 1024 and unit_idx < len(units) - 1:
-            value /= 1024
-            unit_idx += 1
-
-        return value, units[unit_idx]
-
-    def _convert_time(self, time_in_seconds: float) -> str:
-        """
-        Convert seconds to a human-readable string with appropriate units.
-
-        :param time: The time in seconds
-        :type time: float
-        :return: The time in human-readable format
+        :param resource_property: Resource property value
+        :type resource_property: float
+        :param resource_type: Type of resource (CPU, Memory, Disk)
+        :type resource_type: ResourceType
+        :return: Formatted threshold string
         :rtype: str
         """
-        units = ["s", "m", "h"]
-        thresholds = [1, 60, 3600]
-        time = abs(time_in_seconds)
-
-        # If time is less than 1 second, convert to smaller units
-        if time < 1:
-            if time < 0.000001:  # nanoseconds
-                return f"{time * 1e9:.2f} ns"
-            elif time < 0.001:  # microseconds
-                return f"{time * 1e6:.2f} us"
-            else:  # milliseconds
-                return f"{time * 1000:.2f} ms"
-
-        # If time is greater than 1 second, convert to larger units
-        for i in range(len(units) - 1, -1, -1):
-            if time >= thresholds[i]:
-                converted_time = time / thresholds[i]
-                return f"{converted_time:.2f} {units[i]}"
-
-        return f"{time:.2f} s"
+        if resource_type.name == ResourceType.CPU.name:
+            return f"{resource_property:.2f}%"
+        else:
+            val, unit = Formatter.format_bytes(resource_property)
+            if resource_type.name == ResourceType.DISK.name:
+                return f"{val:.2f} {unit}/s"
+            return f"{val:.2f} {unit}"
 
     def _detect_idle_periods(self, series: pd.Series, resource_type: ResourceType) -> List[Tuple[pd.Timestamp, pd.Timestamp]]:
         """
@@ -219,13 +190,12 @@ class IdleResourceDetection(BaseModule):
         """
         if resource_type == ResourceType.CPU:
             threshold = self.thresholds.cpu_idle_threshold
-            idle_mask = series < threshold
         elif resource_type == ResourceType.MEMORY:
             threshold = self.thresholds.memory_idle_threshold
-            idle_mask = series < threshold
         else:
             threshold = self.thresholds.disk_idle_threshold
-            idle_mask = series < threshold
+
+        idle_mask = series < threshold
 
         idle_periods = []
         current_start = None
@@ -243,38 +213,24 @@ class IdleResourceDetection(BaseModule):
 
         return idle_periods
 
-    def _analyze_usage_pattern(self, series: pd.Series, resource_type: ResourceType) -> str:
+    def _analyze_utilization_pattern(self, series: pd.Series) -> str:
         """
         Analyze the usage pattern of a resource.
 
         :param series: Time series data of resource usage
         :type series: pd.Series
-        :param resource_type: Type of resource being analyzed
-        :type resource_type: ResourceType
         :return: Description of the usage pattern
         :rtype: str
         """
-        if series.empty:
-            return "No data"
+        cv = Statistics.get_coefficient_of_variation(series)
 
-        # Calculate only for the 99th percentile of data to avoid outliers
-        data = series[series < series.quantile(0.99)]
-
-        mean = data.mean()
-        std = data.std()
-        cv = std / mean if mean > 0 else float("inf")
-
-        if cv == float("inf"):
-            return "No usage"
-
-        if cv < 0.1:
-            return "Very stable"
-        elif cv < 0.3:
-            return "Stable"
-        elif cv < 0.6:
-            return "Moderate variation"
-        else:
-            return "Highly variable"
+        return (
+            "No variation" if cv < 0 else
+            "Very stable" if cv < 0.1 else
+            "Stable" if cv < 0.3 else
+            "Moderate variation" if cv < 0.6 else
+            "Highly variable"
+        )
 
     def analyze_cpu_scheduling(self) -> Dict[int, SchedulingMetrics]:
         """
@@ -395,18 +351,8 @@ class IdleResourceDetection(BaseModule):
 
                 series = df[df.columns[0]]
 
-                if resource_type == ResourceType.CPU:
-                    avg_usage = series.mean()
-                    peak_usage = series.max()
-                    units = "%"
-                elif resource_type == ResourceType.MEMORY:
-                    avg_usage = series.mean()
-                    peak_usage = series.max()
-                    units = "bytes"
-                else:
-                    avg_usage = series.mean()
-                    peak_usage = series.max()
-                    units = "bytes/s"
+                avg_usage = series.mean()
+                peak_usage = series.max()
 
                 idle_periods = self._detect_idle_periods(series, resource_type)
 
@@ -421,8 +367,7 @@ class IdleResourceDetection(BaseModule):
                         idle_percentage=idle_percentage,
                         total_duration=total_time,
                         idle_periods=idle_periods,
-                        usage_pattern=self._analyze_usage_pattern(series, resource_type),
-                        units=units
+                        usage_pattern=self._analyze_utilization_pattern(series),
                     )
 
             df = next(iter(resource_dfs.values()))
@@ -469,29 +414,14 @@ class IdleResourceDetection(BaseModule):
                 total_duration = sum(m.total_duration for m in result.idle_resources.values())
 
                 if resource_type == ResourceType.CPU:
-                    usage_str = f"{100 - avg_idle_percent:.1f}%"
-                elif resource_type == ResourceType.MEMORY:
-                    val, unit = self._format_bytes(sum(m.average_usage for m in result.idle_resources.values()))
-                    usage_str = f"{val:.2f} {unit} (Idle periods detected)"
+                    usage_str = f"{self._get_formatted_resource_property(100 - avg_idle_percent, resource_type)} (Idle periods detected)"
                 else:
-                    val, unit = self._format_bytes(sum(m.average_usage for m in result.idle_resources.values()))
-                    usage_str = f"{val:.2f} {unit}/s (Idle periods detected)"
+                    usage_str = f"{self._get_formatted_resource_property(sum(m.average_usage for m in result.idle_resources.values()), resource_type)} (Idle periods detected)"
             else:
                 # Calculate metrics for resources without idle periods
                 df = next((df for name, df in self.dataframes.items() if resource_type.name.lower() in name.lower()), None)
                 if df is not None:
-                    if resource_type == ResourceType.CPU:
-                        avg_usage = df.mean().mean()
-                        usage_str = f"{avg_usage:.1f}%"
-                    elif resource_type == ResourceType.MEMORY:
-                        avg_usage = df.mean().mean()
-                        val, unit = self._format_bytes(avg_usage)
-                        usage_str = f"{val:.2f} {unit}"
-                    else:
-                        avg_usage = df.mean().mean()
-                        val, unit = self._format_bytes(avg_usage)
-                        usage_str = f"{val:.2f} {unit}/s"
-
+                    usage_str = self._get_formatted_resource_property(df.mean().mean(), resource_type)
                     total_duration = (df.index[-1] - df.index[0]).total_seconds()
                 else:
                     usage_str = "N/A (No data available)"
@@ -513,29 +443,19 @@ class IdleResourceDetection(BaseModule):
                         "Analysis Period End": result.analysis_period["end"].strftime("%Y-%m-%d %H:%M:%S.%f") if result.analysis_period["end"] else "N/A"
                     }
 
-                    if resource_type.name == ResourceType.CPU.name:
-                        threshold_metrics["CPU Idle Threshold"] = f"{result.thresholds_used.cpu_idle_threshold}%"
-                    elif resource_type.name == ResourceType.MEMORY.name:
-                        val, unit = self._format_bytes(result.thresholds_used.memory_idle_threshold)
-                        threshold_metrics["Memory Idle Threshold"] = f"{val:.2f} {unit}"
-                    else:
-                        val, unit = self._format_bytes(result.thresholds_used.disk_idle_threshold)
-                        threshold_metrics["Disk Idle Threshold"] = f"{val:.2f} {unit}/s"
+                    threshold_metrics[f"{resource_type.name} Idle Threshold"] = self._get_formatted_resource_property(
+                        result.thresholds_used.cpu_idle_threshold if resource_type.name == ResourceType.CPU.name else
+                        result.thresholds_used.memory_idle_threshold if resource_type.name == ResourceType.MEMORY.name else
+                        result.thresholds_used.disk_idle_threshold,
+                        resource_type
+                    )
 
                     DocumentGenerator.metrics_group("Analysis Parameters", threshold_metrics)
 
                     for resource_name, metrics in result.idle_resources.items():
                         resource_metrics = {}
-
-                        if resource_type.name == ResourceType.CPU.name:
-                            resource_metrics["Average Usage"] = f"{metrics.average_usage:.1f}%"
-                            resource_metrics["Peak Usage"] = f"{metrics.peak_usage:.1f}%"
-                        else:
-                            avg_val, avg_unit = self._format_bytes(metrics.average_usage)
-                            peak_val, peak_unit = self._format_bytes(metrics.peak_usage)
-                            unit_suffix = "/s" if resource_type.name == ResourceType.DISK.name else ""
-                            resource_metrics["Average Usage"] = f"{avg_val:.2f} {avg_unit}{unit_suffix}"
-                            resource_metrics["Peak Usage"] = f"{peak_val:.2f} {peak_unit}{unit_suffix}"
+                        resource_metrics["Average Usage"] = self._get_formatted_resource_property(metrics.average_usage, resource_type)
+                        resource_metrics["Peak Usage"] = self._get_formatted_resource_property(metrics.peak_usage, resource_type)
 
                         resource_metrics.update({
                             "Idle Time Percentage": f"{metrics.idle_percentage:.1f}%",
@@ -559,10 +479,10 @@ class IdleResourceDetection(BaseModule):
                             idle_period_rows = []
                             for start, end in top_periods:
                                 duration = (end - start).total_seconds()
-                                duration = self._convert_time(duration)
+                                time_val, time_unit = Formatter.format_seconds(duration)
                                 idle_period_rows.append([start.strftime("%Y-%m-%d %H:%M:%S.%f"),
                                                          end.strftime("%Y-%m-%d %H:%M:%S.%f"),
-                                                         duration])
+                                                         f"{time_val:.2f} {time_unit}"])
 
                             DocumentGenerator.table(
                                 idle_period_headers,
@@ -575,7 +495,6 @@ class IdleResourceDetection(BaseModule):
 
             overall_scheduling_metrics = {
                 "Total CPUs": len(scheduling_results),
-                "Average Utilization": f"{sum(m.utilization for m in scheduling_results.values()) / len(scheduling_results):.1f}%",
                 "Total Context Switches": f"{sum(m.context_switches for m in scheduling_results.values()):,}",
                 "Total Unique Tasks": sum(m.unique_tasks for m in scheduling_results.values())
             }
@@ -592,8 +511,8 @@ class IdleResourceDetection(BaseModule):
                     "Unique Tasks": metrics.unique_tasks,
                     "Active/Idle Samples": f"{metrics.active_samples:,}/{metrics.idle_samples:,}",
                     "Number of Idle Periods": f"{metrics.number_of_idle_periods:,}",
-                    "Average Idle Period": self._convert_time(avg_idle_time),
-                    "Longest Idle Period": self._convert_time(longest_idle_time)
+                    "Average Idle Period": f"{Formatter.format_seconds(avg_idle_time)[0]:.2f} {Formatter.format_seconds(avg_idle_time)[1]}",
+                    "Longest Idle Period": f"{Formatter.format_seconds(longest_idle_time)[0]:.2f} {Formatter.format_seconds(longest_idle_time)[1]}"
                 }
 
                 DocumentGenerator.metrics_group(f"CPU {cpu_id + 1} Scheduling Metrics", cpu_metrics)
@@ -612,7 +531,7 @@ class IdleResourceDetection(BaseModule):
                     DocumentGenerator.table(
                         task_headers,
                         task_rows,
-                        f"Top {min(5, len(metrics.task_distribution))} Tasks for CPU {cpu_id + 1}"
+                        f"Top Tasks for CPU {cpu_id + 1}"
                     )
 
             # Generate optimization recommendations
@@ -666,8 +585,8 @@ class IdleResourceDetection(BaseModule):
                 inefficient_memory = []
 
                 for resource_name, metrics in memory_result.idle_resources.items():
-                    val, unit = self._format_bytes(metrics.average_usage)
-                    peak_val, peak_unit = self._format_bytes(metrics.peak_usage)
+                    val, unit = Formatter.format_bytes(metrics.average_usage)
+                    peak_val, peak_unit = Formatter.format_bytes(metrics.peak_usage)
 
                     if metrics.idle_percentage > memory_result.thresholds_used.idle_percent_threshold:
                         idle_memory.append(f"{resource_name} (Using {val:.2f} {unit}, {metrics.idle_percentage:.1f}% idle)")
@@ -801,15 +720,7 @@ class IdleResourceDetection(BaseModule):
                     threshold_line = self.thresholds.disk_idle_threshold
                     ylabel = "Disk Throughput"
 
-                units = metrics.units
-                threshold = threshold_line
-                if resource_type.name != ResourceType.CPU.name:
-                    threshold_value, threshold_unit = self._format_bytes(threshold)
-                    threshold = round(threshold_value, 2)
-                    units = threshold_unit
-
-                    if resource_type.name == ResourceType.DISK.name:
-                        units += "/s"
+                threshold = self._get_formatted_resource_property(threshold_line, resource_type)
 
                 plots.append({
                     "plot_type": "hline",
@@ -817,29 +728,15 @@ class IdleResourceDetection(BaseModule):
                     "color": "red",
                     "linestyle": "--",
                     "alpha": 0.5,
-                    "label": f"Idle Threshold ({round(threshold, 2)} {units})"
+                    "label": f"Idle Threshold ({threshold})"
                 })
 
-                if resource_type.name == ResourceType.CPU.name:
-                    usage_str = f"{metrics.average_usage:.1f}%"
-                    peak_str = f"{metrics.peak_usage:.1f}%"
-                else:
-                    avg_val, avg_unit = self._format_bytes(metrics.average_usage)
-                    peak_val, peak_unit = self._format_bytes(metrics.peak_usage)
-                    usage_str = f"{avg_val:.1f} {avg_unit}"
-                    peak_str = f"{peak_val:.1f} {peak_unit}"
-                    if resource_type == ResourceType.DISK:
-                        usage_str += "/s"
-                        peak_str += "/s"
+                usage_str = self._get_formatted_resource_property(metrics.average_usage, resource_type)
+                peak_str = self._get_formatted_resource_property(metrics.peak_usage, resource_type)
 
                 max_value = max(df.max().max(), threshold_line)
                 y_ticks = np.linspace(0, max_value, 10)
-                if resource_type.name == ResourceType.CPU.name:
-                    y_tick_labels = [f"{tick:.0f}%" for tick in y_ticks]
-                elif resource_type.name == ResourceType.MEMORY.name:
-                    y_tick_labels = [f"{self._format_bytes(tick)[0]:.0f} {self._format_bytes(tick)[1]}" for tick in y_ticks]
-                else:
-                    y_tick_labels = [f"{self._format_bytes(tick)[0]:.0f} {self._format_bytes(tick)[1]}/s" for tick in y_ticks]
+                y_tick_labels = [self._get_formatted_resource_property(tick, resource_type) for tick in y_ticks]
 
                 self._plot(
                     plots,

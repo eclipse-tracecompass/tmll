@@ -8,6 +8,7 @@ from enum import Enum, auto
 from tmll.ml.modules.base_module import BaseModule
 from tmll.common.models.experiment import Experiment
 from tmll.common.models.output import Output
+from tmll.ml.utils.formatter import Formatter
 from tmll.tmll_client import TMLLClient
 from tmll.ml.utils.document_generator import DocumentGenerator
 
@@ -472,7 +473,8 @@ class MemoryLeakDetection(BaseModule):
         patterns = []
 
         if memory_trend["is_significant"] and memory_trend["slope"] > 0:
-            patterns.append(f"Systematic memory growth detected: {self._convert_bytes(memory_trend["growth_rate"])}/second")
+            growth_val, growth_unit = Formatter.format_bytes(memory_trend["growth_rate"])
+            patterns.append(f"Systematic memory growth detected: {growth_val:.2f} {growth_unit}/s")
 
         if allocation_patterns["allocation_frequency"].std() > allocation_patterns["allocation_frequency"].mean():
             patterns.append("Irregular allocation pattern detected")
@@ -481,54 +483,6 @@ class MemoryLeakDetection(BaseModule):
             patterns.append("High memory usage volatility detected")
 
         return patterns
-
-    def _convert_bytes(self, size_in_bytes: float) -> str:
-        """
-        Convert bytes to a human-readable string with appropriate units.
-
-        :param size_in_bytes: The size in bytes
-        :type size_in_bytes: float
-        :return: The size in human-readable format
-        :rtype: str
-        """
-        units = ["B", "KB", "MB", "GB", "TB"]
-        unit_index = 0
-
-        while size_in_bytes >= 1024 and unit_index < len(units) - 1:
-            size_in_bytes /= 1024
-            unit_index += 1
-
-        return f"{size_in_bytes:.2f} {units[unit_index]}"
-
-    def _convert_time(self, time_in_seconds: float) -> str:
-        """
-        Convert seconds to a human-readable string with appropriate units.
-
-        :param time: The time in seconds
-        :type time: float
-        :return: The time in human-readable format
-        :rtype: str
-        """
-        units = ["s", "m", "h"]
-        thresholds = [1, 60, 3600]
-        time = abs(time_in_seconds)
-
-        # If time is less than 1 second, convert to smaller units
-        if time < 1:
-            if time < 0.000001:  # nanoseconds
-                return f"{time * 1e9:.2f} ns"
-            elif time < 0.001:  # microseconds
-                return f"{time * 1e6:.2f} us"
-            else:  # milliseconds
-                return f"{time * 1000:.2f} ms"
-
-        # If time is greater than 1 second, convert to larger units
-        for i in range(len(units) - 1, -1, -1):
-            if time >= thresholds[i]:
-                converted_time = time / thresholds[i]
-                return f"{converted_time:.2f} {units[i]}"
-
-        return f"{time:.2f} s"
 
     def interpret(self, analysis_result: LeakAnalysisResult) -> None:
         """Interpret and display memory leak analysis results using the DocumentGenerator."""
@@ -540,12 +494,15 @@ class MemoryLeakDetection(BaseModule):
             "Confidence Score": f"{analysis_result.confidence_score:.2f}"
         })
 
+        leak_val, leak_unit = Formatter.format_bytes(analysis_result.metrics.leak_rate)
+        avg_val, avg_unit = Formatter.format_bytes(analysis_result.metrics.avg_allocation_size)
+        max_growth_val, max_growth_unit = Formatter.format_seconds(analysis_result.metrics.max_continuous_growth_duration)
         DocumentGenerator.metrics_group("Memory Metrics", {
             "Unreleased Allocations": analysis_result.metrics.unreleased_allocations,
             "Total Allocations": analysis_result.metrics.total_allocations,
-            "Leak Rate": f"{self._convert_bytes(analysis_result.metrics.leak_rate)}/second",
-            "Average Allocation Size": f"{self._convert_bytes(analysis_result.metrics.avg_allocation_size)}",
-            "Max Continuous Growth": f"{self._convert_time(analysis_result.metrics.max_continuous_growth_duration)}",
+            "Leak Rate": f"{leak_val:.2f} {leak_unit}/s",
+            "Average Allocation Size": f"{avg_val:.2f} {avg_unit}",
+            "Max Continuous Growth": f"{max_growth_val:.2f} {max_growth_unit}",
             "Memory Fragmentation": f"{analysis_result.metrics.memory_fragmentation_score:.2f}"
         })
 
@@ -566,10 +523,13 @@ class MemoryLeakDetection(BaseModule):
             )
 
         memory_df = self.dataframes["Memory Usage"]
+        peak_val, peak_unit = Formatter.format_bytes(memory_df["Memory Usage"].max())
+        avg_val, avg_unit = Formatter.format_bytes(memory_df["Memory Usage"].mean())
+        std_val, std_unit = Formatter.format_bytes(memory_df["Memory Usage"].std())
         DocumentGenerator.metrics_group("Memory Usage Statistics", {
-            "Peak Memory Usage": self._convert_bytes(memory_df["Memory Usage"].max()),
-            "Average Memory Usage": self._convert_bytes(memory_df["Memory Usage"].mean()),
-            "Memory Usage Std Dev": self._convert_bytes(memory_df["Memory Usage"].std())
+            "Peak Memory Usage": f"{peak_val:.2f} {peak_unit}",
+            "Average Memory Usage": f"{avg_val:.2f} {avg_unit}",
+            "Memory Usage Std Dev": f"{std_val:.2f} {std_unit}"
         })
 
         allocation_events = self.dataframes["Events Table"][
@@ -588,10 +548,13 @@ class MemoryLeakDetection(BaseModule):
         ptr_tracking = self._track_pointer_lifecycle()
         lifetimes = ptr_tracking["lifetime"].dropna()
         if not lifetimes.empty:
+            avg_val, avg_unit = Formatter.format_seconds(lifetimes.mean())
+            med_val, med_unit = Formatter.format_seconds(lifetimes.median())
+            max_val, max_unit = Formatter.format_seconds(lifetimes.max())
             DocumentGenerator.metrics_group("Pointer Lifetime Statistics", {
-                "Average Lifetime": f"{self._convert_time(lifetimes.mean())}",
-                "Median Lifetime": f"{self._convert_time(lifetimes.median())}",
-                "Maximum Lifetime": f"{self._convert_time(lifetimes.max())}"
+                "Average Lifetime": f"{avg_val:.2f} {avg_unit}",
+                "Median Lifetime": f"{med_val:.2f} {med_unit}",
+                "Maximum Lifetime": f"{max_val:.2f} {max_unit}"
             })
 
     def plot_memory_leak_analysis(self, analysis_result: LeakAnalysisResult, **kwargs) -> None:
@@ -682,6 +645,8 @@ class MemoryLeakDetection(BaseModule):
                    fig_xlabel="Time", fig_ylabel="Operations per Second", grid=True)
 
         # Plot 3: Pointer Lifetime Distribution
+        mean_val, mean_unit = Formatter.format_seconds(lifetimes.mean())
+        med_val, med_unit = Formatter.format_seconds(lifetimes.median())
         plots = [
             {
                 "plot_type": "histogram",
@@ -693,7 +658,7 @@ class MemoryLeakDetection(BaseModule):
             {
                 "plot_type": "vline",
                 "x": lifetimes.mean(),
-                "label": f"Mean: {self._convert_time(lifetimes.mean())}",
+                "label": f"Mean: {mean_val:.2f} {mean_unit}",
                 "color": colors(6),
                 "linestyle": "--",
                 "linewidth": 2.5
@@ -701,7 +666,7 @@ class MemoryLeakDetection(BaseModule):
             {
                 "plot_type": "vline",
                 "x": lifetimes.median(),
-                "label": f"Median: {self._convert_time(lifetimes.median())}",
+                "label": f"Median: {med_val:.2f} {med_unit}",
                 "color": colors(7),
                 "linestyle": "--",
                 "linewidth": 2.5
