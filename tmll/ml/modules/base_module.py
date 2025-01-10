@@ -8,10 +8,12 @@ from tmll.common.models.output import Output
 from tmll.common.services.logger import Logger
 from tmll.ml.modules.common.data_fetch import DataFetcher
 from tmll.ml.modules.common.data_preprocess import DataPreprocessor
+from tmll.ml.utils.formatter import Formatter
 from tmll.ml.visualization.plot_factory import PlotFactory
 from tmll.common.models.experiment import Experiment
 from tmll.ml.visualization.utils import PlotUtils
 from tmll.tmll_client import TMLLClient
+
 
 class BaseModule(ABC):
 
@@ -77,13 +79,25 @@ class BaseModule(ABC):
         ax.set_ylabel(kwargs.get('fig_ylabel', ''))
 
         if kwargs.get('fig_xticks', None) is not None:
-            ax.set_xticks(kwargs.get('fig_xticks')) # type: ignore
+            ax.set_xticks(kwargs.get('fig_xticks'))  # type: ignore
+
         if kwargs.get('fig_yticks', None) is not None:
-            ax.set_yticks(kwargs.get('fig_yticks')) # type: ignore
+            ax.set_yticks(kwargs.get('fig_yticks'))  # type: ignore
+        else:
+            y_min, y_max = ax.get_ylim()
+            if isinstance(y_min, (int, float)) and isinstance(y_max, (int, float)):
+                yticks = PlotUtils.get_formatted_ticks(y_min, y_max)
+                ax.set_yticks(yticks)
+
+                data_range = yticks[-1] - yticks[0]
+                padding = data_range * 0.025
+                ax.set_ylim(yticks[0] - padding, yticks[-1] + padding)
+                ax.set_yticklabels([f"{val:.2f} {unit}" for tick in yticks for val, unit in [Formatter.format_large_number(tick)]])
+
         if kwargs.get('fig_xticklabels', None) is not None:
-            ax.set_xticklabels(kwargs.get('fig_xticklabels')) # type: ignore
+            ax.set_xticklabels(kwargs.get('fig_xticklabels'))  # type: ignore
         if kwargs.get('fig_yticklabels', None) is not None:
-            ax.set_yticklabels(kwargs.get('fig_yticklabels')) # type: ignore
+            ax.set_yticklabels(kwargs.get('fig_yticklabels'))  # type: ignore
         if kwargs.get('fig_xticklabels_rotation', None) is not None:
             ax.set_xticks(ax.get_xticks())
             ax.set_xticklabels(ax.get_xticklabels(), rotation=kwargs.get('fig_xticklabels_rotation'))
@@ -124,7 +138,7 @@ class BaseModule(ABC):
         if data is None:
             self.logger.error("No data fetched")
             return
-        
+
         self.outputs = outputs
 
         # Process each output
