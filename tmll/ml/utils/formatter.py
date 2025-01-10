@@ -86,3 +86,21 @@ class Formatter:
         }
 
         return value * conversion[unit]
+
+    @staticmethod
+    def format_large_number(number: float) -> Tuple[float, str]:
+        """
+        Format a large number into a human-readable string with appropriate unit.
+
+        :param number: The number to format
+        :type number: float
+        :return: Tuple of (converted value, unit)
+        :rtype: Tuple[float, str]
+        """
+        if abs(number) >= 1e9:
+            return number/1e9, "B"
+        elif abs(number) >= 1e6:
+            return number/1e6, "M"
+        elif abs(number) >= 1e3:
+            return number/1e3, "K"
+        return number, ""
