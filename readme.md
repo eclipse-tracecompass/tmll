@@ -1,60 +1,109 @@
-# Trace Server Protocol (TSP) Machine Learning Library (TMLL)
+# TMLL
+
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Documentation](https://img.shields.io/badge/Documentation-tmll.gitbook.io-orange.svg)](https://tmll.gitbook.io)
+
+**T**race-Server **M**achine **L**earning **L**ibrary (TMLL) is an automated pipeline that aims to apply Machine Learning techniques to the analyses derived from [Trace Server](https://github.com/eclipse-cdt-cloud/trace-server-protocol). TMLL aims to simplify the process of performing both primitive trace analyses and complementary ML-based investigations.
+
+## Overview
+
+TMLL provides users with pre-built, automated solutions integrating general Trace-Server analyses (e.g., CPU, Memory, or Disk usage) with machine learning techniques. This allows for more precise, efficient analysis without requiring deep knowledge in either Trace-Server operations or machine learning. By streamlining the workflow, TMLL empowers users to identify anomalies, trends, and other performance insights without extensive technical expertise, significantly improving the usability of trace data in real-world applications.
+
+## Table of Contents
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Features and Modules](#features-and-modules)
+- [Prerequisites](#prerequisites)
+- [Documentation](#documentation)
+- [Support](#support)
+- [License](#license)
 
 ## Installation
-Use the following command to install TMLL:
-```console
+
+### Install from PyPI
+
+TMLL is currently available through the **Test PyPI** repository. To install it, you can use the following command:
+
+```bash
 pip3 install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple tmll
 ```
 
-## Usage
-In order to use TMLL, you need to import its client in your code.
-```python
-from tmll import TMLLClient
+### Install from Source
 
-client = TMLLClient()
+To install the latest version from source:
+
+```bash
+# Clone TMLL from Git
+git clone https://github.com/eclipse-tracecompass/tmll.git
+cd tmll
+
+# Clone its submodule(s)
+git submodule update --init
+
+# Create a virtual environment (if haven't already)
+python3 -m venv venv
+source venv/bin/activate # If Linux or MacOS
+.\venv\Scripts\activate # If Windows 
+
+# Install the required dependencies
+pip3 install -r requirements.txt
 ```
 
-The client connects to the running TSP server with the default hostname and ports (i.e., localhost:8080). However, if the TSP server is not running or its health status is not stable, the client will raise a connection error.
+If you install TMLL from source code, you need to add these lines before importing TMLL's library:
 
-### Importing Traces
-To import your traces in TMLL, you can use `import_traces()` method.
 ```python
-client = TMLLClient()
+import sys
+sys.path.append("tmll/tsp")
+```
 
-client.import_traces(traces = [
+## Quick Start
+
+Here's a minimal example to get you started with TMLL:
+
+```python
+from tmll.tmll_client import TMLLClient
+from tmll.ml.modules.anomaly_detection.anomaly_detection_module import AnomalyDetection
+
+# Initialize the TMLL client
+client = TMLLClient(verbose=True)
+
+# Create an experiment from trace files
+experiment = client.create_experiment(traces=[
     {
-        "path": "YOUR_TRACE_FILE_PATH_1",
-        "name": "YOUR_TRACE_NAME_1" # This is optional. If you pass the generate_name=True to the method, the client will automatically create a name for your traces (and for the experiment if neccessary)
-    },
-    {
-        "path": "YOUR_TRACE_FILE_PATH_2",
-        "name": "YOUR_TRACE_NAME_2" # Check above
-    },
-    ...
-])
+        "path": "/path/to/trace/file",  # Required
+        "name": "custom_name"  # Optional, random name assigned if absent
+    }
+], experiment_name="EXPERIMENT_NAME")
+
+# Run anomaly detection
+outputs = experiment.find_outputs(keyword=['cpu usage'], type=['xy'])
+ad = AnomalyDetection(client, experiment, outputs)
+anomalies = ad.find_anomalies(method='iforest')
+ad.plot_anomalies(anomalies)
 ```
 
-### Apply Clustering
-```python
-clustering = client.apply_clustering(with_results=True)
+## Prerequisites
 
-if clustering:
-    # Experiment info
-    experiment = clustering["experiment"]
-    print(f"Experiment: {experiment}")
+- Python 3.8 or higher
+- Trace Server instance
+- Required Python packages (automatically installed with pip)
 
-    # Fetched outputs from TSP
-    outputs = clustering["outputs"]
-    for output in outputs:
-        print(f"Output: {output['output'].name}")
+## Features and Modules
 
-        # If clustering has been applied successfully on the output's data
-        if "results" in output:
-            clusters = output["results"]
+In a nutshell, TMLL employs a diverse set of machine learning techniques, ranging from straightforward statistical tests to more sophisticated model-training procedures, to provide insights from analyses driven by Trace Server. These features are designed to help users reduce their manual efforts by automating the trace analysis process.
 
-            for cluster_name, cluster_info in clusters.items():
-                print(f"Cluster: {cluster_name}")
-                print(f"\tModel: {cluster_info['model']} | Number of Clusters: {cluster_info['n_clusters']} | Evaluations: {cluster_info['evaluation']}")
+To find out more on TMLL modules along with their usage instructions, check out the [TMLL Documentation](https://tmll.gitbook.io/docs).
 
-                dataframe = cluster_info["clusters"]
-```
+## Documentation
+
+- Documentation: [https://tmll.gitbook.io/](https://tmll.gitbook.io/)
+- API Reference: TBD
+- Tutorials: TBD
+
+## Support
+
+- Create an [issue](https://github.com/eclipse-tracecompass/tmll/issues) for bug reports or feature requests
+
+## License
+
+This project is licensed under the MIT - see the [LICENSE](LICENSE) file for details.

@@ -10,7 +10,7 @@ with open('requirements.txt', 'r') as f:
 
 setup(
     name='tmll',
-    version='0.0.22',
+    version='0.0.30',
     packages=find_packages(include=['tmll', 'tmll.*']),
     install_requires=requirements,
     long_description=long_description,
