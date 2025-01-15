@@ -14,6 +14,10 @@ from tmll.common.models.experiment import Experiment
 from tmll.common.models.output import Output
 from tmll.tmll_client import TMLLClient
 
+# Disable warnings ruptures costnormal
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="ruptures.costs.costnormal")
+
 
 @dataclass
 class ChangePointAnalysisResult:
@@ -39,13 +43,6 @@ class ChangePointAnalysis(BaseModule):
     - Voting-based analysis: Combines change points from individual metrics using voting
     - PCA analysis: Uses principal component analysis to detect change points
     """
-
-    AVAILABLE_MODELS = {
-        "rbf": ruptures.Binseg(model="rbf"),
-        "linear": ruptures.Binseg(model="linear"),
-        "normal": ruptures.Binseg(model="normal"),
-        "cosine": ruptures.Binseg(model="cosine")
-    }
 
     AVAILABLE_METRICS = ["single", "zscore", "voting", "pca"]
 
@@ -75,11 +72,13 @@ class ChangePointAnalysis(BaseModule):
 
     def _process(self, outputs: Optional[List[Output]] = None, **kwargs) -> None:
         super()._process(outputs=outputs,
+                         normalize=False,
                          **kwargs)
 
     def _post_process(self, **kwargs) -> None:
         # Combine dataframes
-        self.combined_df = self.data_preprocessor.combine_dataframes(list(self.dataframes.values()))
+        normalized_dataframes = [self.data_preprocessor.normalize(df) for df in self.dataframes.values()]
+        self.combined_df = self.data_preprocessor.combine_dataframes(normalized_dataframes)
 
     def _calculate_changes_magnitude(self, data: np.ndarray, change_points: List[int]) -> List[float]:
         """
@@ -117,27 +116,27 @@ class ChangePointAnalysis(BaseModule):
             snr = mean_change / max(before_std, after_std) if max(before_std, after_std) > 0 else mean_change
 
             # Combined magnitude score
-            magnitude = (0.5 * snr) + (0.3 * mean_change) + (0.2 * var_change)
+            magnitude = self._calculate_significance(float(mean_change), float(var_change))
             magnitudes.append(magnitude)
 
         magnitudes = [magnitude for magnitude in magnitudes if abs(magnitude) > 0]
 
         return magnitudes
 
-    def _calculate_statistical_metrics(self, segment_before: np.ndarray, segment_after: np.ndarray) -> Tuple[float, float, float]:
+    def _calculate_statistical_metrics(self, segment_before: np.ndarray, segment_after: np.ndarray) -> Tuple[float, float]:
         """
         Calculate statistical metrics for segments before and after a change point.
-        The statistical metrics are: mean change, variance change, and signal-to-noise ratio.
+        The statistical metrics are: mean change and variance change
 
         :param segment_before: Data segment before change point
         :type segment_before: np.ndarray
         :param segment_after: Data segment after change point
         :type segment_after: np.ndarray
-        :return: Tuple of (mean_change, var_change, snr)
-        :rtype: Tuple[float, float, float]
+        :return: Tuple of (mean_change, var_change)
+        :rtype: Tuple[float, float]
         """
         if len(segment_before) == 0 or len(segment_after) == 0:
-            return 0.0, 0.0, 0.0
+            return 0.0, 0.0
 
         before_mean = np.mean(segment_before)
         after_mean = np.mean(segment_after)
@@ -146,10 +145,8 @@ class ChangePointAnalysis(BaseModule):
 
         mean_change = abs(after_mean - before_mean)
         var_change = abs(after_std - before_std)
-        noise = max(before_std, after_std)
-        snr = mean_change / noise if noise > 0 else mean_change
 
-        return float(mean_change), float(var_change), float(snr)
+        return float(mean_change), float(var_change)
 
     def _get_segments(self, data: np.ndarray, change_point: int) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -162,14 +159,13 @@ class ChangePointAnalysis(BaseModule):
         :return: Tuple of (before_segment, after_segment)
         :rtype: Tuple[np.ndarray, np.ndarray]
         """
-        window_size = min(self.window_size, change_point,
-                          len(data) - change_point)
+        window_size = min(self.window_size, change_point, len(data) - change_point)
         before_segment = data[max(0, change_point - window_size):change_point]
         after_segment = data[change_point:min(
             len(data), change_point + window_size)]
         return before_segment, after_segment
 
-    def _calculate_significance(self, mean_change: float, var_change: float, snr: float) -> float:
+    def _calculate_significance(self, mean_change: float, var_change: float) -> float:
         """
         Calculate significance score from statistical metrics.
 
@@ -177,14 +173,13 @@ class ChangePointAnalysis(BaseModule):
         :type mean_change: float
         :param var_change: Change in variance
         :type var_change: float
-        :param snr: Signal-to-noise ratio
-        :type snr: float
         :return: Combined significance score
         :rtype: float
         """
-        return (0.5 * snr) + (0.3 * mean_change) + (0.2 * var_change)
+        return (0.6 * mean_change) + (0.4 * var_change)
 
-    def _detect_changes(self, data: np.ndarray, n_change_points: int = 5, tune_hyperparameters: bool = True, method_key: Optional[str] = None) -> List[int]:
+    def _detect_changes(self, data: np.ndarray, n_change_points: int = 5,
+                        tune_hyperparameters: bool = True, method_key: Optional[str] = None) -> List[int]:
         """
         Detect the most significant change points in order of their importance.
         We want to detect the most significant change points in the data.
@@ -200,7 +195,7 @@ class ChangePointAnalysis(BaseModule):
         """
         # Tune parameters if needed
         if tune_hyperparameters and method_key and method_key not in self.best_params:
-            self.best_params[method_key] = self._tune_hyperparameters(data)
+            self.best_params[method_key] = self._tune_hyperparameters(data, n_change_points)
 
         params = self.best_params.get(method_key, {}) if method_key else {}
         model_type = params.get("model", "rbf")
@@ -213,7 +208,7 @@ class ChangePointAnalysis(BaseModule):
 
         # Get extra change points for significance evaluation
         # We want to ensure that we have enough points to evaluate significance
-        n_extra = min(len(data) // 2, n_change_points * 3)
+        n_extra = min(len(data) // 2, n_change_points * 5)
         all_change_points = model.predict(n_bkps=n_extra)[:-1]
 
         if not all_change_points:
@@ -226,15 +221,12 @@ class ChangePointAnalysis(BaseModule):
             if len(before_segment) == 0 or len(after_segment) == 0:
                 continue
 
-            mean_change, var_change, snr = self._calculate_statistical_metrics(
-                before_segment, after_segment)
-            significance = self._calculate_significance(
-                mean_change, var_change, snr)
+            mean_change, var_change = self._calculate_statistical_metrics(before_segment, after_segment)
+            significance = self._calculate_significance(mean_change, var_change)
             significance_scores.append((cp, significance))
 
         # Select top points by significance
-        significant_points = sorted(
-            significance_scores, key=lambda x: x[1], reverse=True)
+        significant_points = sorted(significance_scores, key=lambda x: x[1], reverse=True)
         return sorted(point[0] for point in significant_points[:n_change_points])
 
     def get_change_points(self, metrics: Optional[List[str]] = None,
@@ -301,8 +293,7 @@ class ChangePointAnalysis(BaseModule):
         # Z-score analysis
         if "zscore" in methods:
             scaler = StandardScaler()
-            scaled_data = scaler.fit_transform(
-                self.combined_df[metrics_to_analyze])
+            scaled_data = scaler.fit_transform(self.combined_df[metrics_to_analyze])
             combined_zscore = np.sqrt(np.mean(np.square(scaled_data), axis=1))
 
             change_points = self._detect_changes(data=combined_zscore,
@@ -370,8 +361,8 @@ class ChangePointAnalysis(BaseModule):
 
         return results
 
-    def _tune_hyperparameters(self, data: np.ndarray, param_grid: Optional[Dict] = None,
-                              cv_splits: int = 5, deep_search: bool = False) -> Dict:
+    def _tune_hyperparameters(self, data: np.ndarray, n_change_points: int,
+                              param_grid: Optional[Dict] = None, cv_splits: int = 5, deep_search: bool = False) -> Dict:
         """
         Tune hyperparameters for change point detection using cross-validation.
 
@@ -391,15 +382,13 @@ class ChangePointAnalysis(BaseModule):
                 "model": ["rbf", "linear", "normal", "cosine"],  # Model type
                 "min_size": [5, 10, 20],  # Minimum size of a segment
                 "window_size": [3, 5],  # Window size for calculating change magnitude
-                "penalty": [1, 3],  # Penalty parameter for change point detection
-                "jump": [1, 3]  # Jump parameter for computational efficiency
+                "jump": [2, 3, 4]  # Jump parameter
             }
 
         if deep_search:
             param_grid["min_size"] = [5, 10, 15, 20, 25, 30, 35, 40]
             param_grid["window_size"] = [3, 5, 7, 10, 15]
-            param_grid["penalty"] = [1, 2, 3, 4, 5]
-            param_grid["jump"] = [1, 2, 3, 4, 5]
+            param_grid["jump"] = [2, 3, 4, 5, 6]
 
         tscv = TimeSeriesSplit(n_splits=cv_splits)
 
@@ -423,8 +412,7 @@ class ChangePointAnalysis(BaseModule):
 
                 try:
                     model.fit(train_data.reshape(-1, 1))
-
-                    bkps = model.predict(pen=params["penalty"])
+                    bkps = model.predict(n_bkps=n_change_points)[:-1]
 
                     error = self._calculate_prediction_error(test_data, bkps)
                     scores.append(error)
@@ -432,7 +420,7 @@ class ChangePointAnalysis(BaseModule):
                     self.logger.warning(f"Error with parameters {params}: {str(e)}")
                     scores.append(float("inf"))
 
-            mean_score = np.mean(scores)
+            mean_score = np.mean(scores) if len(scores) > 0 else float("inf")
 
             if mean_score < best_score:
                 best_score = mean_score
@@ -480,7 +468,7 @@ class ChangePointAnalysis(BaseModule):
             self.logger.error("No results provided")
             return
 
-        if self.combined_df is None:
+        if self.combined_df is None or self.combined_df.empty:
             self.logger.error("Combined DataFrame is None")
             return
 
@@ -488,7 +476,7 @@ class ChangePointAnalysis(BaseModule):
         fig_dpi = kwargs.get("fig_dpi", 100)
 
         combined_plots = []
-        colors = plt.get_cmap("tab20")
+        colors = plt.get_cmap("tab10")
         for idx, metric in enumerate(self.combined_df.columns):
             # Add time series plot for each metric (combined)
             combined_plots.append({
@@ -497,7 +485,7 @@ class ChangePointAnalysis(BaseModule):
                 "label": metric,
                 "title": metric,
                 "y": metric,
-                "color": colors(idx / len(self.combined_df.columns)),
+                "color": colors(idx % 10),
                 "linewidth": 1.5,
                 "xlabel": "Time",
                 "ylabel": metric
@@ -523,9 +511,9 @@ class ChangePointAnalysis(BaseModule):
                             "pca" in results.metrics and results.metrics["pca"].kwargs is not None) else None
                 case _:
                     return f"Change Points for {metric_name}", \
-                        self.combined_df[metric_name] if (self.combined_df is not None and metric_name in self.combined_df.columns) else None
+                        self.dataframes[metric_name].iloc[:, 0] if metric_name in self.dataframes else None
 
-        for metric_name, metric_result in results.metrics.items():
+        for idx, (metric_name, metric_result) in enumerate(results.metrics.items()):
             plots = []
             title, series = _get_metric_data(metric_name)
             # Add individual metric plots
@@ -535,13 +523,17 @@ class ChangePointAnalysis(BaseModule):
                 "title": metric_name,
                 "label": metric_name,
                 "y": metric_name,
-                "color": colors(0),
+                "color": colors(idx % 10),
                 "linewidth": 1.5
             })
 
             # Add change points to the plot
             for cp, mag in zip(metric_result.change_points, metric_result.magnitudes):
                 change_time = self.combined_df.index[cp]
+
+                # Normalize magnitude based on the metric
+                if series is not None and np.max(series) != 0:
+                    mag = mag / np.max(series)
 
                 # Add change point to plot
                 plots.append({
@@ -561,10 +553,10 @@ class ChangePointAnalysis(BaseModule):
                     "data": None,
                     "xy": change_time,
                     "text": f"Δ={mag:.2f}",
-                    "color": "red"
+                    "color": "red",
                 })
 
             self._plot(plots=plots, plot_size=fig_size, dpi=fig_dpi,
                        fig_title=title,
                        fig_xlabel="Time",
-                       fig_ylabel=f"{metric_name} (normalized)" if metric_name not in self.AVAILABLE_METRICS else metric_name)
+                       fig_ylabel=metric_name)
