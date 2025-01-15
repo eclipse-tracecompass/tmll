@@ -500,7 +500,7 @@ class AnnotatePlot(PlotStrategy):
         :type is_top: bool, optional
         """
         text = kwargs.get("text", "Annotation")
-        xy = (kwargs.get("xy", 0), ax.get_ylim()[1] * 0.9)
+        xy = (kwargs.get("xy", 0), ax.get_ylim()[1])
         xytext = kwargs.get("xytext", (5, 0))
         textcoords = kwargs.get("textcoords", "offset points")
         rotation = kwargs.get("rotation", 0)
