@@ -1,9 +1,10 @@
 from dataclasses import dataclass
+import numpy as np
 import pandas as pd
-from typing import List, Literal, Dict, Optional
+from typing import List, Dict, Optional
 import matplotlib.pyplot as plt
-
-from functools import reduce
+from sklearn.decomposition import PCA
+from sklearn.discriminant_analysis import StandardScaler
 
 from tmll.common.models.experiment import Experiment
 from tmll.ml.modules.anomaly_detection.strategies.base import AnomalyDetectionStrategy
@@ -23,7 +24,10 @@ from tmll.tmll_client import TMLLClient
 MINIMUM_REQUIRED_DATAPOINTS = 10
 
 # Anomaly detection methods supported by the module
-DETECTION_METHODS = Literal["zscore", "iqr", "moving_average", "combined", "iforest", "seasonality", "frequency_domain"]
+DETECTION_METHODS = ["zscore", "iqr", "moving_average", "combined", "iforest", "seasonality"]
+
+# Combination methods supported by the module
+COMBINATION_METHODS = ["zscore", "pca"]
 
 
 @dataclass
@@ -68,24 +72,35 @@ class AnomalyDetection(BaseModule):
             "moving_average": MovingAverageStrategy(),
             "combined": CombinedStrategy([ZScoreStrategy(), IQRStrategy(), MovingAverageStrategy()]),
             "iforest": IsolationForestStrategy(),
-            "seasonality": SeasonalityStrategy(),
-            "frequency_domain": FrequencyDomainStrategy()
+            "seasonality": SeasonalityStrategy()
         }
 
-        self.logger.info(f"Initializing AnomalyDetection module")
+        self.logger.info(f"Initializing AnomalyDetection module.")
 
         self._process(outputs, **kwargs)
 
     def _process(self, outputs: Optional[List[Output]] = None, **kwargs) -> None:
         super()._process(outputs=outputs,
+                         normalize=False,
                          min_size=kwargs.get("min_size", MINIMUM_REQUIRED_DATAPOINTS),
                          **kwargs)
 
     def _post_process(self, **kwargs) -> None:
-        # Handle aggregation if requested
-        if kwargs.get("aggregate", False):
-            # Outer join all dataframes on timestamp
-            self.dataframes["aggregated"] = reduce(lambda x, y: pd.merge(x, y, on="timestamp", how="outer"), self.dataframes.values())
+        normalized_dataframes = [self.data_preprocessor.normalize(df) for df in self.dataframes.values()]
+        df = self.data_preprocessor.combine_dataframes(normalized_dataframes)
+
+        combination_method = kwargs.get("combine_method", COMBINATION_METHODS[0])
+        if combination_method not in COMBINATION_METHODS:
+            self.logger.warning(f"Unknown combination method: {combination_method}. Using {COMBINATION_METHODS[0]} instead.")
+            combination_method = COMBINATION_METHODS[0]
+
+        if combination_method == "zscore":
+            scaler = StandardScaler()
+            combined_data = np.sqrt(np.mean(np.square(scaler.fit_transform(df)), axis=1))
+        else:  # PCA
+            combined_data = PCA(n_components=1).fit_transform(df).flatten()
+
+        self.dataframes[f"combined ({combination_method})"] = pd.DataFrame(combined_data, index=df.index, columns=["combined"])
 
     def find_anomalies(self, method: str = "zscore", **kwargs) -> Optional[AnomalyDetectionResult]:
         """
@@ -98,18 +113,18 @@ class AnomalyDetection(BaseModule):
         :param kwargs: Additional keyword arguments to pass to the detection method.
         :return: None
         """
-        self.detection_method = method
+        self.detection_method = method.lower()
         self.logger.info(f"Detecting anomalies using {self.detection_method} method...")
 
         strategy = self.strategy_map.get(self.detection_method)
         if not strategy:
-            self.logger.error(f"Unknown detection method: {self.detection_method}")
+            self.logger.error(f"Unknown detection method: {self.detection_method}. Please choose from {DETECTION_METHODS}.")
             return None
 
         anomalies: Dict[str, pd.DataFrame] = {}
         anomaly_periods: Dict[str, List] = {}
-        for output_key, dataframe in self.dataframes.items():
-            anomalies[output_key], anomaly_periods[output_key] = strategy.detect_anomalies(dataframe.copy(), **kwargs)
+        for name, dataframe in self.dataframes.items():
+            anomalies[name], anomaly_periods[name] = strategy.detect_anomalies(dataframe.copy(), **kwargs)
 
         return AnomalyDetectionResult(anomalies=anomalies, anomaly_periods=anomaly_periods)
 
@@ -128,32 +143,22 @@ class AnomalyDetection(BaseModule):
 
         fig_size = kwargs.get("fig_size", (18, 4))
         fig_dpi = kwargs.get("fig_dpi", 500)
-        colors = plt.colormaps.get_cmap("tab20")
+        colors = plt.colormaps.get_cmap("tab10")
 
-        for output_key, dataframe in self.dataframes.items():
-            # Check if the output key is in the anomalies
-            if output_key not in anomaly_detection_results.anomalies:
-                continue
-
+        for idx, (name, dataframe) in enumerate(self.dataframes.items()):
             plots = []
             # Plot the original data
-            for column in dataframe.columns:
-                # Plot_data is a DataFrame with the index and the column data
-                plot_data = dataframe[[column]].copy()
-                plot_data["timestamp"] = plot_data.index
-
-                plots.append({
-                    "plot_type": "time_series",
-                    "data": plot_data,
-                    "label": column,
-                    "x": "timestamp",
-                    "y": column,
-                    "color": colors(dataframe.columns.get_loc(column) // len(dataframe.columns)),  # type: ignore
-                    "alpha": 0.75
-                })
+            plots.append({
+                "plot_type": "time_series",
+                "data": dataframe,
+                "label": name,
+                "color": colors(idx),
+                "alpha": 1,
+                "linewidth": 2
+            })
 
             # Append the anomaly periods to the plots as span plot
-            for start, end in anomaly_detection_results.anomaly_periods[output_key]:
+            for start, end in anomaly_detection_results.anomaly_periods[name]:
                 # print(f"Anomaly detected from {start} to {end}")
                 plots.append({
                     "label": "Anomaly Period",
@@ -161,14 +166,24 @@ class AnomalyDetection(BaseModule):
                     "data": None,
                     "start": start,
                     "end": end,
-                    "color": "pink",
-                    "alpha": 0.5,
+                    "color": "red",
+                    "alpha": 0.3,
                     "is_top": True
                 })
 
             anomaly_points_list = []
-            for point in anomaly_detection_results.anomalies[output_key].index:
-                if not anomaly_detection_results.anomalies[output_key].loc[point].any():
+            for point in anomaly_detection_results.anomalies[name].index:
+                if not anomaly_detection_results.anomalies[name].loc[point].any():
+                    continue
+
+                # Check if the point is within any anomaly period
+                in_anomaly_period = False
+                for start, end in anomaly_detection_results.anomaly_periods[name]:
+                    if start <= point <= end:
+                        in_anomaly_period = True
+                        break
+
+                if in_anomaly_period:
                     continue
 
                 anomaly_points_list.append({
@@ -186,30 +201,13 @@ class AnomalyDetection(BaseModule):
                     "x": "timestamp",
                     "y": "value",
                     "color": "red",
-                    "alpha": 0.75
+                    "alpha": 0.7,
+                    "s": 100
                 })
 
-            output_name = ""
-            for output in self.experiment.outputs:
-                if str(output.id) in output_key:
-                    output_name = output.name
-                    if "$" in output_key:
-                        output_name += f" ({output_key.split("$")[1]})"
-                    break
-
-            is_separate = kwargs.get("separate", False)
-            if not is_separate:
-                self._plot(plots,
-                           plot_size=fig_size,
-                           dpi=fig_dpi,
-                           fig_title=f"Anomaly Detection for \"{output_name}\" using \"{self.detection_method.capitalize()}\" method",
-                           fig_xlabel="Time (index)",
-                           fig_ylabel="Normalized Values")
-            else:
-                for plot in plots:
-                    self._plot([plot],
-                               plot_size=fig_size,
-                               dpi=fig_dpi,
-                               fig_title=f"{plot["label"]}",
-                               fig_xlabel="Time (index)",
-                               fig_ylabel="Normalized Values")
+            self._plot(plots,
+                       plot_size=fig_size,
+                       dpi=fig_dpi,
+                       fig_title=f"Anomaly Detection for \"{name}\" using \"{self.detection_method}\" method",
+                       fig_xlabel="Time (index)",
+                       fig_ylabel=name)

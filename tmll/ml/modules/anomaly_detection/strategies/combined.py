@@ -19,13 +19,13 @@ class CombinedStrategy(AnomalyDetectionStrategy):
         :return: DataFrame with combined anomalies
         :rtype: pd.DataFrame
         """
-        all_anomalies = None
+        anomalies: list[pd.DataFrame] = []
         for strategy in self.strategies:
-            anomalies, _ = strategy.detect_anomalies(data, **kwargs)
-            if all_anomalies is None:
-                all_anomalies = anomalies
-            else:
-                all_anomalies &= anomalies
+            strategy_anomalies, _ = strategy.detect_anomalies(data, **kwargs)
+            anomalies.append(strategy_anomalies)
+
+        # Find the intersection of all anomalies (i.e., same index in all dataframes)
+        all_anomalies = pd.concat(anomalies, axis=1).dropna(how="any")
 
         if all_anomalies is None:
             all_anomalies = pd.DataFrame(index=data.index, columns=data.columns).fillna(False)

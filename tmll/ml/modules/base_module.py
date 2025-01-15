@@ -86,13 +86,14 @@ class BaseModule(ABC):
         else:
             y_min, y_max = ax.get_ylim()
             if isinstance(y_min, (int, float)) and isinstance(y_max, (int, float)):
-                yticks = PlotUtils.get_formatted_ticks(y_min, y_max)
+                num_yticks = kwargs.get('fig_num_yticks', 6)
+                yticks = PlotUtils.get_formatted_ticks(y_min, y_max, num_yticks)
                 ax.set_yticks(yticks)
 
                 data_range = yticks[-1] - yticks[0]
                 padding = data_range * 0.025
                 ax.set_ylim(yticks[0] - padding, yticks[-1] + padding)
-                ax.set_yticklabels([f"{val:.2f} {unit}" for tick in yticks for val, unit in [Formatter.format_large_number(tick)]])
+                ax.set_yticklabels([f"{val:.2f}{unit}" for tick in yticks for val, unit in [Formatter.format_large_number(tick)]])
 
         if kwargs.get('fig_xticklabels', None) is not None:
             ax.set_xticklabels(kwargs.get('fig_xticklabels'))  # type: ignore
