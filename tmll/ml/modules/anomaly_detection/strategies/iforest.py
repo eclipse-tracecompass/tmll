@@ -19,9 +19,9 @@ class IsolationForestStrategy(AnomalyDetectionStrategy):
         :return: DataFrame with detected anomalies
         :rtype: pd.DataFrame
         """
-        window_size = kwargs.get("window_size", 100)
-        contamination = kwargs.get("contamination", 0.1)
-        random_state = kwargs.get("random_state", 42)
+        window_size = kwargs.get("iforest_window_size", 100)
+        contamination = kwargs.get("iforest_contamination", 0.1)
+        random_state = kwargs.get("iforest_random_state", 42)
 
         # Keep a copy of the original data
         df = data.copy()

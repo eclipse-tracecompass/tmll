@@ -31,9 +31,9 @@ class SeasonalityStrategy(AnomalyDetectionStrategy):
         if kwargs.get("resample_freq", None) is not None:
             resample_freq = kwargs["resample_freq"]
             del kwargs["resample_freq"]
-        if kwargs.get("seasonal_period", None) is not None:
-            seasonal_period = kwargs["seasonal_period"]
-            del kwargs["seasonal_period"]
+        if kwargs.get("seasonality_seasonal_period", None) is not None:
+            seasonal_period = kwargs["seasonality_seasonal_period"]
+            del kwargs["seasonality_seasonal_period"]
 
         for column in data.columns:
             # Skip non-numeric columns
@@ -86,8 +86,8 @@ class SeasonalityStrategy(AnomalyDetectionStrategy):
             is_stationary = False
 
         # Set ARIMA parameters
-        p, d, q = kwargs.get("arima_order", (1, int(not is_stationary), 1))
-        P, D, Q = kwargs.get("seasonal_order", (1, 1, 1))
+        p, d, q = kwargs.get("seasonality_arima_order", (1, int(not is_stationary), 1))
+        P, D, Q = kwargs.get("seasonality_seasonal_order", (1, 1, 1))
         
         # Fit SARIMA model
         try:
@@ -104,7 +104,7 @@ class SeasonalityStrategy(AnomalyDetectionStrategy):
         predicted_mean = predictions.predicted_mean
         
         # Calculate confidence intervals
-        conf_int = predictions.conf_int(alpha=kwargs.get("confidence_level", 0.05))
+        conf_int = predictions.conf_int(alpha=kwargs.get("seasonality_confidence_level", 0.05))
 
         # Detect anomalies
         anomalies = (ts < conf_int.iloc[:, 0]) | (ts > conf_int.iloc[:, 1])

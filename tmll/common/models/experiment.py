@@ -97,3 +97,17 @@ class Experiment(Trace):
                 matches.append(output)
         
         return sorted(matches, key=lambda x: x.name)
+    
+    def get_output(self, output_id: str) -> Optional[Output]:
+        """
+        Get the output with the given ID.
+        
+        :param output_id: The ID of the output to get
+        :type output_id: str
+        :return: The output with the given ID, or None if not found
+        :rtype: Optional[Output]
+        """
+        for output in self.outputs:
+            if output.id == output_id:
+                return output
+        return None

@@ -53,7 +53,7 @@ class Encoder:
             self.dataset = pd.DataFrame(encoder.fit_transform(self.dataset), columns=self.dataset.columns)
         else:
             for feature in target_features:
-                self.dataset[feature] = encoder.fit_transform(self.dataset[[feature]]).toarray() # type: ignore
+                self.dataset[feature] = encoder.fit_transform(self.dataset[[feature]]).ravel()
 
         return self.dataset
 

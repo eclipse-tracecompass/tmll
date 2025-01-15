@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 from tmll.ml.preprocess.normalizer import Normalizer
@@ -43,9 +43,18 @@ class DataPreprocessor:
         :return: The DataFrame with the timestamp column converted to datetime
         :rtype: pd.DataFrame
         """
-        dataframe[timestamp_column] = pd.to_datetime(dataframe[timestamp_column])
+        if timestamp_column not in dataframe.columns and 'Timestamp ns' in list(dataframe.columns):
+            dataframe = dataframe.rename(columns={'Timestamp ns': timestamp_column})
+            dataframe[timestamp_column] = dataframe[timestamp_column].astype(float) / 1e9
+            dataframe[timestamp_column] = pd.to_datetime(dataframe[timestamp_column], unit='s')
+        elif timestamp_column in dataframe.columns:
+            dataframe[timestamp_column] = pd.to_datetime(dataframe[timestamp_column])
+        else:
+            return dataframe # Return the original DataFrame if the timestamp column does not exist
+        
         if set_index:
             dataframe.set_index(timestamp_column, inplace=True)
+
         return dataframe
         
     @staticmethod
@@ -60,7 +69,10 @@ class DataPreprocessor:
         :return: The resampled DataFrame
         :rtype: pd.DataFrame
         """
-        return dataframe.resample(frequency).mean().interpolate()
+        try:
+            return dataframe.resample(frequency).mean().interpolate()
+        except:
+            return dataframe
     
     @staticmethod
     def trim_dataframe(dataframe: pd.DataFrame, threshold: float = 0.01, min_active_period: int = 5):
@@ -147,3 +159,40 @@ class DataPreprocessor:
             dataframes[name] = dataframes[name].reindex(reference_index, fill_value=0)
         
         return dataframes, reference_index
+    
+    @staticmethod
+    def combine_dataframes(dataframes: List[pd.DataFrame]) -> pd.DataFrame:
+        """
+        Combine the DataFrames into a single DataFrame with a common index.
+
+        :param dataframes: The list of DataFrames to combine
+        :type dataframes: List[pd.DataFrame]
+        :return: The combined DataFrame
+        :rtype: pd.DataFrame
+        """
+        combined_data = {}
+        common_index = None
+        
+        for df in dataframes:
+            if len(df.columns) != 1:
+                continue
+
+            if common_index is None:
+                common_index = df.index
+
+            series = df.iloc[:, 0]
+            combined_data[df.columns[0]] = series
+            
+        return pd.DataFrame(combined_data, index=common_index)
+    
+    @staticmethod
+    def remove_minimum(dataframe: pd.DataFrame) -> pd.DataFrame:
+        """
+        Remove the minimum value from the first column in the DataFrame (e.g., to remove outliers).
+
+        :param dataframe: The DataFrame to process
+        :type dataframe: pd.DataFrame
+        :return: The DataFrame with the minimum value removed from each column
+        :rtype: pd.DataFrame
+        """
+        return dataframe[dataframe.iloc[:, 0] != dataframe.iloc[:, 0].min()]
