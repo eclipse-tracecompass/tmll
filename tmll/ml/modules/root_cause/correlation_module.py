@@ -113,7 +113,7 @@ class CorrelationAnalysis(BaseModule):
         # Filter data for the specified period
         if start_time and end_time:
             # Check if period is valid
-            if start_time > end_time or start_time == end_time or (start_time < self.timestamps[0] or end_time > self.timestamps[-1] if self.timestamps else False):
+            if start_time > end_time or start_time == end_time or (start_time < self.timestamps[0] or end_time > self.timestamps[-1] if self.timestamps is not None else False):
                 self.logger.warning("Invalid time period specified.")
                 return None
 
@@ -234,12 +234,16 @@ class CorrelationAnalysis(BaseModule):
         fig_size = kwargs.get("fig_size", (10, 8))
         fig_dpi = kwargs.get("fig_dpi", 100)
 
+        y_ticks = results.correlations.index
+        x_ticks = results.correlations.columns
+
         self._plot([{
             "plot_type": "heatmap",
             "data": results.correlations.fillna(0),
             "mask": mask,
             "cmap": "RdBu",
-        }], plot_size=fig_size, dpi=fig_dpi, fig_title="Correlation Matrix")
+        }], plot_size=fig_size, dpi=fig_dpi, fig_title="Correlation Matrix", grid=False,
+            fig_yticks=range(len(y_ticks)), fig_xticks=range(len(x_ticks)))
 
     def plot_lag_analysis(self, lag_results: Optional[LagAnalysisResult], **kwargs) -> None:
         """Plot lag correlation analysis results.
@@ -327,7 +331,7 @@ class CorrelationAnalysis(BaseModule):
             self.logger.warning("At least two series are required for comparison.")
             return
 
-        colors = plt.colormaps.get_cmap("tab20")
+        colors = plt.colormaps.get_cmap("tab10")
 
         plots = []
         for idx, name in enumerate(series):
@@ -344,7 +348,9 @@ class CorrelationAnalysis(BaseModule):
                 "data": df,
                 "y": name,
                 "label": name,
-                "color": colors(idx / len(series))
+                "color": colors(idx % 10),
+                "alpha": 0.85,
+                "linewidth": 2
             })
 
         fig_size = kwargs.get("fig_size", (12, 6))
