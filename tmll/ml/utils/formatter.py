@@ -1,5 +1,7 @@
-from typing import Tuple
+from typing import List, Tuple
 import re
+
+import numpy as np
 
 
 class Formatter:
@@ -104,3 +106,31 @@ class Formatter:
         elif abs(number) >= 1e3:
             return number/1e3, "K"
         return number, ""
+
+    @staticmethod
+    def get_rounded_values(values: List[float]) -> List[float]:
+        """
+        Get a list of rounded values that divide the range of the input values into nice intervals.
+
+        :param values: The input values
+        :type values: List[float]
+        :return: List of rounded values
+        :rtype: List[float]
+        """
+        min_val = min(values)
+        max_val = max(values)
+        n_intervals = len(values) - 1
+
+        # Calculate the step size that would divide the range into equal nice numbers
+        range_size = max_val - min_val
+        step_magnitude = 10 ** np.floor(np.log10(range_size / n_intervals))
+        multipliers = np.arange(1, 20, 0.5)
+        potential_steps = step_magnitude * multipliers
+
+        best_step = potential_steps[np.abs(range_size / potential_steps - n_intervals).argmin()]
+
+        start = np.floor(min_val / best_step) * best_step
+        end = np.ceil(max_val / best_step) * best_step
+        rounded_values = np.arange(start, end + best_step/2, best_step)
+
+        return rounded_values.tolist()
