@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 import pandas as pd
 import numpy as np
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 import matplotlib.pyplot as plt
 
 from tmll.ml.modules.base_module import BaseModule
@@ -25,7 +25,7 @@ class ResourceThresholds:
     cpu_idle_threshold: float = 10.0  # percentage
     memory_idle_threshold: float = 10 * 1024 * 1024  # bytes
     disk_idle_threshold: float = 5.0 * 1024 * 1024  # bytes/s
-    idle_percent_threshold: float = 30.0  # percentage of time resource must be idle
+    idle_time: str = '1m'  # time-based
 
 
 @dataclass
@@ -174,10 +174,10 @@ class IdleResourceDetection(BaseModule):
         else:
             val, unit = Formatter.format_bytes(resource_property)
             if resource_type.name == ResourceType.DISK.name:
-                return f"{val:.2f} {unit}/s"
-            return f"{val:.2f} {unit}"
+                return f"{val:.2f}{unit}/s"
+            return f"{val:.2f}{unit}"
 
-    def _detect_idle_periods(self, series: pd.Series, resource_type: ResourceType) -> List[Tuple[pd.Timestamp, pd.Timestamp]]:
+    def _detect_idle_periods(self, series: pd.Series, resource_type: ResourceType, idle_time: str) -> List[Tuple[pd.Timestamp, pd.Timestamp]]:
         """
         Detect periods where the resource usage is below the threshold.
 
@@ -185,6 +185,8 @@ class IdleResourceDetection(BaseModule):
         :type series: pd.Series
         :param resource_type: Type of resource being analyzed
         :type resource_type: ResourceType
+        :param idle_time: Time threshold for idle periods
+        :type idle_time: str
         :return: List of (start_time, end_time) tuples for idle periods
         :rtype: List[Tuple[pd.Timestamp, pd.Timestamp]]
         """
@@ -199,6 +201,7 @@ class IdleResourceDetection(BaseModule):
 
         idle_periods = []
         current_start = None
+        idle_time_seconds = Formatter.parse_time_to_seconds(idle_time)
 
         for time, is_idle in idle_mask.items():
             if is_idle and current_start is None:
@@ -210,6 +213,9 @@ class IdleResourceDetection(BaseModule):
         # Handle case where series ends during an idle period
         if current_start is not None:
             idle_periods.append((current_start, series.index[-1]))
+
+        # Filter out idle periods shorter than the threshold
+        idle_periods = [(start, end) for start, end in idle_periods if (end - start).total_seconds() >= idle_time_seconds]
 
         return idle_periods
 
@@ -317,7 +323,7 @@ class IdleResourceDetection(BaseModule):
             cpu_idle_threshold=kwargs.get("cpu_idle_threshold", ResourceThresholds.cpu_idle_threshold),
             memory_idle_threshold=kwargs.get("memory_idle_threshold", ResourceThresholds.memory_idle_threshold),
             disk_idle_threshold=kwargs.get("disk_idle_threshold", ResourceThresholds.disk_idle_threshold),
-            idle_percent_threshold=kwargs.get("idle_percent_threshold", ResourceThresholds.idle_percent_threshold)
+            idle_time=kwargs.get("idle_time", ResourceThresholds.idle_time)
         )
 
         results = {}
@@ -354,21 +360,20 @@ class IdleResourceDetection(BaseModule):
                 avg_usage = series.mean()
                 peak_usage = series.max()
 
-                idle_periods = self._detect_idle_periods(series, resource_type)
+                idle_periods = self._detect_idle_periods(series, resource_type, self.thresholds.idle_time)
 
                 total_idle_time = sum((end - start).total_seconds() for start, end in idle_periods)
                 total_time = (series.index[-1] - series.index[0]).total_seconds()  # type: ignore
                 idle_percentage = (total_idle_time / total_time * 100) if total_time > 0 else 0
 
-                if idle_percentage >= self.thresholds.idle_percent_threshold:
-                    idle_resources[name] = ResourceMetrics(
-                        average_usage=avg_usage,
-                        peak_usage=peak_usage,
-                        idle_percentage=idle_percentage,
-                        total_duration=total_time,
-                        idle_periods=idle_periods,
-                        usage_pattern=self._analyze_utilization_pattern(series),
-                    )
+                idle_resources[name] = ResourceMetrics(
+                    average_usage=avg_usage,
+                    peak_usage=peak_usage,
+                    idle_percentage=idle_percentage,
+                    total_duration=total_time,
+                    idle_periods=idle_periods,
+                    usage_pattern=self._analyze_utilization_pattern(series),
+                )
 
             df = next(iter(resource_dfs.values()))
             results[resource_type] = IdleResourceAnalysisResult(
@@ -470,7 +475,7 @@ class IdleResourceDetection(BaseModule):
 
                         DocumentGenerator.metrics_group(f"Resource: {resource_name}", resource_metrics)
 
-                        if metrics.idle_periods and metrics.idle_percentage > result.thresholds_used.idle_percent_threshold:
+                        if metrics.idle_periods:
                             idle_period_headers = ["Start Time", "End Time", "Duration"]
                             top_periods = [(start, end) for start, end in sorted(metrics.idle_periods,
                                                                                  key=lambda x: (x[1] - x[0]).total_seconds(),
@@ -553,8 +558,7 @@ class IdleResourceDetection(BaseModule):
                 high_usage_cpus = []
 
                 for resource_name, metrics in cpu_result.idle_resources.items():
-                    if metrics.idle_percentage > cpu_result.thresholds_used.idle_percent_threshold:
-                        idle_cpus.append(f"{resource_name} ({metrics.idle_percentage:.1f}% idle)")
+                    idle_cpus.append(f"{resource_name} ({metrics.idle_percentage:.1f}% idle)")
 
                     if metrics.usage_pattern == "Highly variable":
                         variable_cpus.append(resource_name)
@@ -588,8 +592,7 @@ class IdleResourceDetection(BaseModule):
                     val, unit = Formatter.format_bytes(metrics.average_usage)
                     peak_val, peak_unit = Formatter.format_bytes(metrics.peak_usage)
 
-                    if metrics.idle_percentage > memory_result.thresholds_used.idle_percent_threshold:
-                        idle_memory.append(f"{resource_name} (Using {val:.2f} {unit}, {metrics.idle_percentage:.1f}% idle)")
+                    idle_memory.append(f"{resource_name} (Using {val:.2f} {unit}, {metrics.idle_percentage:.1f}% idle)")
 
                     memory_efficiency = (metrics.average_usage / metrics.peak_usage) * 100
                     if memory_efficiency < 50:
@@ -678,13 +681,13 @@ class IdleResourceDetection(BaseModule):
 
         fig_size = kwargs.get("fig_size", (15, 4))
         fig_dpi = kwargs.get("fig_dpi", 100)
-        colors = plt.get_cmap("tab20")
+        colors = plt.get_cmap("tab10")
 
-        for resource_type, result in analysis_results.items():
+        for idx, (resource_type, result) in enumerate(analysis_results.items()):
             if not result.idle_resources:
                 continue
 
-            for idx, (resource_name, metrics) in enumerate(result.idle_resources.items()):
+            for resource_name, metrics in result.idle_resources.items():
                 df = self.dataframes[resource_name]
 
                 plots = []
@@ -693,9 +696,9 @@ class IdleResourceDetection(BaseModule):
                     "plot_type": "time_series",
                     "data": df,
                     "label": f"{resource_name} Usage",
-                    "color": colors(idx % 20),
+                    "color": colors(idx % 10),
                     "alpha": 0.8,
-                    "linewidth": 1.5
+                    "linewidth": 2
                 })
 
                 # Highlight idle periods
@@ -734,10 +737,6 @@ class IdleResourceDetection(BaseModule):
                 usage_str = self._get_formatted_resource_property(metrics.average_usage, resource_type)
                 peak_str = self._get_formatted_resource_property(metrics.peak_usage, resource_type)
 
-                max_value = max(df.max().max(), threshold_line)
-                y_ticks = np.linspace(0, max_value, 10)
-                y_tick_labels = [self._get_formatted_resource_property(tick, resource_type) for tick in y_ticks]
-
                 self._plot(
                     plots,
                     plot_size=fig_size,
@@ -748,8 +747,7 @@ class IdleResourceDetection(BaseModule):
                     f"Pattern: {metrics.usage_pattern})",
                     fig_xlabel="Time",
                     fig_ylabel=ylabel,
-                    fig_yticks=y_ticks,
-                    fig_yticklabels=y_tick_labels
+                    fig_num_yticks=8
                 )
 
     def plot_cpu_scheduling(self, scheduling_results: Dict[int, SchedulingMetrics], **kwargs) -> None:
@@ -772,7 +770,7 @@ class IdleResourceDetection(BaseModule):
 
         fig_size = kwargs.get("fig_size", (15, 4))
         fig_dpi = kwargs.get("fig_dpi", 100)
-        colors = plt.get_cmap("tab20")
+        colors = plt.get_cmap("tab10")
 
         # 1: CPU utilization heatmap
         num_slices = 50
@@ -827,14 +825,15 @@ class IdleResourceDetection(BaseModule):
                         "y1": idx,
                         "y2": idx + 0.8,
                         "where": task_mask,
-                        "color": colors(idx % 20),
-                        "alpha": 0.7,
-                        "label": f"Task {idx}: {task}"
+                        "color": colors(idx % 10),
+                        "alpha": 0.8,
+                        "label": f"Task {idx + 1}: {task}"
                     })
 
             self._plot(plots, plot_size=fig_size, dpi=fig_dpi,
                        fig_title=f"Task Distribution Over Time - CPU {cpu_id + 1}",
                        fig_ylabel="Tasks", fig_xlabel="Time",
+                       fig_yticks=range(len(unique_tasks)), fig_yticklabels=[f"Task {idx + 1}" for idx in range(len(unique_tasks))],
                        grid=True, grid_alpha=0.3)
 
             task_distribution = pd.Series(metrics.task_distribution)
@@ -844,7 +843,7 @@ class IdleResourceDetection(BaseModule):
             self._plot([{
                 "plot_type": "bar",
                 "data": task_distribution,
-                "color": [colors(i % 20) for i in range(num_tasks)]
+                "color": [colors(i % 10) for i in range(num_tasks)]
             }], plot_size=fig_size, dpi=fig_dpi,
                 fig_title=f"Top {num_tasks} Tasks Distribution Statistics - CPU {cpu_id + 1}",
                 fig_xlabel="Tasks",
@@ -852,4 +851,5 @@ class IdleResourceDetection(BaseModule):
                 grid=True,
                 grid_alpha=0.3,
                 legend=False,
-                fig_xticklabels_rotation=90)
+                fig_xticklabels_rotation=90,
+                fig_num_yticks=5)
