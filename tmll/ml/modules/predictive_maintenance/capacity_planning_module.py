@@ -110,6 +110,8 @@ class CapacityPlanning(BaseModule):
         if not self.dataframes:
             return
 
+        for key, df in self.dataframes.items():
+            df.columns = [key]
         self.combined_df = self.data_preprocessor.combine_dataframes(list(self.dataframes.values()))
 
         for column in list(self.combined_df.columns):
@@ -138,7 +140,7 @@ class CapacityPlanning(BaseModule):
             "Highly variable"
         )
 
-    def _get_formatted_resource_property(self, resource_property: float, resource_type: ResourceType) -> str:
+    def _get_formatted_resource_property(self, resource_property: float, resource_type: ResourceType, separate: bool = False) -> str:
         """
         Format resource property based on its type.
 
@@ -146,16 +148,22 @@ class CapacityPlanning(BaseModule):
         :type resource_property: float
         :param resource_type: Type of resource (CPU, Memory, Disk)
         :type resource_type: ResourceType
+        :param separate: Whether to separate the value and unit
+        :type separate: bool
         :return: Formatted threshold string
         :rtype: str
         """
+        output = ""
         if resource_type.name == ResourceType.CPU.name:
-            return f"{resource_property:.2f}%"
+            output = f"{resource_property:.2f} %"
         else:
             val, unit = Formatter.format_bytes(resource_property)
+            output = f"{val:.2f} {unit}"
+
             if resource_type.name == ResourceType.DISK.name:
-                return f"{val:.2f} {unit}/s"
-            return f"{val:.2f} {unit}"
+                output += "/s"
+
+        return output if separate else output.replace(" ", "")
 
     def _calculate_pdq(self, series: pd.Series, max_lag: int = 20) -> Tuple[int, int, int]:
         """
@@ -395,7 +403,7 @@ class CapacityPlanning(BaseModule):
                 col for col in self.combined_df.columns
                 if (
                     (resource_type == ResourceType.CPU and "cpu" in col.lower()) or
-                    (resource_type == ResourceType.MEMORY and "memory usage" in col.lower()) or
+                    (resource_type == ResourceType.MEMORY and "memory" in col.lower()) or
                     (resource_type == ResourceType.DISK and "disk" in col.lower())
                 ) and not col.endswith("_original")
             ]
@@ -528,12 +536,19 @@ class CapacityPlanning(BaseModule):
                 DocumentGenerator.metrics_group(f"Resource: {resource_name}", resource_metrics)
 
                 if metrics.threshold_violations:
+                    # Sort violations by duration
+                    metrics.threshold_violations.sort(key=lambda x: (x[1] - x[0]).total_seconds(), reverse=True)
+
                     violation_headers = ["Start", "End", "Duration", "Forecasted Usage"]
                     num_sig_violations = min(5, len(metrics.threshold_violations))
                     violation_rows = []
                     for i in range(num_sig_violations):
                         start_time, end_time, max_usage, _ = metrics.threshold_violations[i]
-                        time_val, time_unit = Formatter.format_seconds((end_time - start_time).total_seconds())
+                        duration = (end_time - start_time).total_seconds()
+                        if duration == 0:
+                            continue
+
+                        time_val, time_unit = Formatter.format_seconds(duration)
                         max_usage = self._get_formatted_resource_property(max_usage, resource_type)
 
                         violation_rows.append([start_time.strftime("%Y-%m-%d %H:%M:%S.%f"),
@@ -667,9 +682,9 @@ class CapacityPlanning(BaseModule):
 
         fig_size = kwargs.get("fig_size", (15, 5))
         fig_dpi = kwargs.get("fig_dpi", 100)
-        colors = plt.get_cmap("tab20")
+        colors = plt.get_cmap("tab10")
 
-        for resource_type, result in forecast_results.items():
+        for idx, (resource_type, result) in enumerate(forecast_results.items()):
             for resource_name, metrics in result.resource_metrics.items():
                 historical_data = self.combined_df[f"{resource_name}_original"]
 
@@ -690,8 +705,8 @@ class CapacityPlanning(BaseModule):
                     "plot_type": "time_series",
                     "data": historical_data,
                     "label": "Historical",
-                    "color": colors(0),
-                    "alpha": 0.8,
+                    "color": colors(idx % 10),
+                    "alpha": 0.5,
                     "linewidth": 2
                 })
 
@@ -705,8 +720,8 @@ class CapacityPlanning(BaseModule):
                         "plot_type": "time_series",
                         "data": connection_data,
                         "label": None,
-                        "color": colors(1),
-                        "alpha": 0.8,
+                        "color": colors(idx % 10),
+                        "alpha": 1,
                         "linewidth": 2,
                     })
 
@@ -715,8 +730,8 @@ class CapacityPlanning(BaseModule):
                     "plot_type": "time_series",
                     "data": forecast_data,
                     "label": "Forecast",
-                    "color": colors(1),
-                    "alpha": 0.8,
+                    "color": colors(idx % 10),
+                    "alpha": 1,
                     "linewidth": 2,
                     "linestyle": "--"
                 })
@@ -737,7 +752,7 @@ class CapacityPlanning(BaseModule):
                     "color": "red",
                     "linestyle": "--",
                     "label": f"Threshold ({threshold_str})",
-                    "alpha": 0.5
+                    "alpha": 0.75
                 })
 
                 # Highlight threshold violations
@@ -763,10 +778,6 @@ class CapacityPlanning(BaseModule):
                     f"Pattern: {metrics.utilization_pattern})"
                 )
 
-                max_value = max(historical_data.max(), forecast_data.max(), threshold_line)
-                y_ticks = np.linspace(0, max_value, 10)
-                y_tick_labels = [self._get_formatted_resource_property(tick, resource_type) for tick in y_ticks]
-
                 self._plot(
                     plots,
                     plot_size=fig_size,
@@ -775,6 +786,5 @@ class CapacityPlanning(BaseModule):
                     fig_title=title,
                     fig_xlabel="Time",
                     fig_ylabel=f"Usage",
-                    fig_yticks=y_ticks,
-                    fig_yticklabels=y_tick_labels
+                    fig_num_yticks=8
                 )
