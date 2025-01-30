@@ -100,6 +100,14 @@ To find out more on TMLL modules along with their usage instructions, check out 
 - API Reference: TBD
 - Tutorials: TBD
 
+## Contributing
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to:
+
+- Submit bug reports and feature requests
+- Set up your development environment
+- Submit pull requests
+- Follow our coding standards
+
 ## Support
 
 - Create an [issue](https://github.com/eclipse-tracecompass/tmll/issues) for bug reports or feature requests
