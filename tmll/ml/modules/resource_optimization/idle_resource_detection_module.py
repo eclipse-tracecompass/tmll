@@ -433,8 +433,7 @@ class IdleResourceDetection(BaseModule):
                     total_duration = 0
 
             overall_metrics[f"{resource_type.name} Average Usage"] = usage_str
-            overall_metrics[f"{resource_type.name} Monitoring Duration"] = f"{
-                total_duration:.2f}s" if total_duration > 0 else "N/A (No data available)"
+            overall_metrics[f"{resource_type.name} Monitoring Duration"] = f"{total_duration:.2f}s" if total_duration > 0 else "N/A (No data available)"
 
         DocumentGenerator.metrics_group("Overall Resources Utilization", overall_metrics)
 
