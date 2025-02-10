@@ -2,3 +2,7 @@
 	path = tmll/tsp
 	url = https://github.com/eclipse-cdt-cloud/tsp-python-client
 	branch = master
+[submodule "tests/test-trace-files"]
+	path = tests/test-trace-files
+	url = https://github.com/eclipse-tracecompass/tracecompass-test-traces.git
+	branch = master
