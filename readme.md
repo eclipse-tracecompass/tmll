@@ -56,6 +56,23 @@ import sys
 sys.path.append("tmll/tsp")
 ```
 
+### Running the Tests
+You may use the steps below to properly run the unit tests.
+
+**Warning: Running the unit tests will erase all previous traces and experiments on the trace server. It is strongly recommended to launch a new instance of the trace server with a different workspace and port to prevent the testing process from affecting your personal configurations. If you tend to use your original trace server and its configuration, create a backup from its workspace first!**
+
+```bash
+# Run the trace server with a different workspace and port, so the tests don't affect your original's workspace
+cd /path/to/tracecompmass-server
+./tracecompmass-server -data /home/user/.tmll-test-ws -vmargs -Dtraceserver.port=8081
+
+# Install developmental dependencies
+pip3 install -r requirements-dev.txt
+
+# Run the tests
+pytest -v
+```
+
 ## Quick Start
 
 Here's a minimal example to get you started with TMLL:
