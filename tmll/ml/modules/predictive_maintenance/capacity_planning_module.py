@@ -529,7 +529,7 @@ class CapacityPlanning(BaseModule):
                 if metrics.threshold_violations:
                     next_violation = metrics.threshold_violations[0]
                     resource_metrics["Next Threshold Violation"] = (
-                        f"{next_violation[0].strftime("%Y-%m-%d %H:%M:%S.%f")} "
+                        f"{next_violation[0].strftime('%Y-%m-%d %H:%M:%S.%f')} "
                     )
                     resource_metrics["Total Violations"] = str(len(metrics.threshold_violations))
 
