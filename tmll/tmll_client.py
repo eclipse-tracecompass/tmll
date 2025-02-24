@@ -8,7 +8,7 @@ import re
 import pandas as pd
 import numpy as np
 
-from typing import Dict, List, Optional, Union, cast
+from typing import Dict, List, Optional, Tuple, Union, cast
 
 from tmll.common.models.data.table.column import TableDataColumn
 from tmll.common.models.data.table.table import TableData
@@ -324,16 +324,18 @@ class TMLLClient:
                     item_ids = list(map(int, [node.id for node in o_tree.nodes]))
                     time_range_start = kwargs.get("start", experiment.start)
                     time_range_end = kwargs.get("end", experiment.end)
-                    time_range_num_times = kwargs.get("num_times", 65536)
+                    resample_freq = kwargs.get("resample_freq", "1s")
 
-                    while True:
+                    intervals = self._calculate_intervals(time_range_start, time_range_end, resample_freq)
+
+                    for interval in intervals:
                         parameters = {
                             TspClient.PARAMETERS_KEY: {
                                 TspClient.REQUESTED_ITEM_KEY: item_ids,
                                 TspClient.REQUESTED_TIME_RANGE_KEY: {
-                                    TspClient.REQUESTED_TIME_RANGE_START_KEY: time_range_start,
-                                    TspClient.REQUESTED_TIME_RANGE_END_KEY: time_range_end,
-                                    TspClient.REQUESTED_TIME_RANGE_NUM_TIMES_KEY: time_range_num_times
+                                    TspClient.REQUESTED_TIME_RANGE_START_KEY: interval[0],
+                                    TspClient.REQUESTED_TIME_RANGE_END_KEY: interval[1],
+                                    TspClient.REQUESTED_TIME_RANGE_NUM_TIMES_KEY: interval[2]
                                 }
                             }
                         }
@@ -374,31 +376,23 @@ class TMLLClient:
                             datasets[o_output.id] = datasets.get(o_output.id, {})
                             datasets[o_output.id][series_name] = pd.concat([datasets[o_output.id].get(series_name, pd.DataFrame()), dataset])
 
-                        # Update the time_range_start for the next iteration
-                        if x and len(x) > 0:
-                            time_range_start = x[-1] + 1  # Start from the next timestamp after the last received
-
-                            # Check if the time_range_start is greater than the time_range_end
-                            if time_range_start > time_range_end:
-                                break
-                        else:
-                            break  # Exit if no data was received in this iteration
-
                 case "TIME_GRAPH":
                     items = list(map(int, [node.id for node in o_tree.nodes]))
                     time_range_start = kwargs.get("start", experiment.start)
                     time_range_end = kwargs.get("end", experiment.end)
-                    time_range_num_times = kwargs.get("num_times", 65536)
+                    resample_freq = kwargs.get("resample_freq", "1s")
                     strategy = kwargs.get("strategy", "DEEP")
 
-                    while True:
+                    intervals = self._calculate_intervals(time_range_start, time_range_end, resample_freq)
+
+                    for interval in intervals:
                         parameters = {
                             TspClient.PARAMETERS_KEY: {
                                 TspClient.REQUESTED_ITEM_KEY: items,
                                 TspClient.REQUESTED_TIME_RANGE_KEY: {
-                                    TspClient.REQUESTED_TIME_RANGE_START_KEY: time_range_start,
-                                    TspClient.REQUESTED_TIME_RANGE_END_KEY: time_range_end,
-                                    TspClient.REQUESTED_TIME_RANGE_NUM_TIMES_KEY: time_range_num_times
+                                    TspClient.REQUESTED_TIME_RANGE_START_KEY: interval[0],
+                                    TspClient.REQUESTED_TIME_RANGE_END_KEY: interval[1],
+                                    TspClient.REQUESTED_TIME_RANGE_NUM_TIMES_KEY: interval[2]
                                 },
                                 "filter_query_parameters": {
                                     "strategy": strategy
@@ -441,16 +435,6 @@ class TMLLClient:
                             datasets[o_output.id] = pd.DataFrame()
 
                         datasets[o_output.id] = pd.concat([datasets[o_output.id], dataset])
-
-                        # Update the time_range_start for the next iteration
-                        if data and len(data) > 0:
-                            time_range_start = data[-1]["end_time"] + 1
-
-                            # Check if the time_range_start is greater than the time_range_end
-                            if time_range_start > time_range_end:
-                                break
-                        else:
-                            break
 
                 case "TABLE" | "DATA_TREE":
                     columns = self.tsp_client.fetch_virtual_table_columns(exp_uuid=experiment.uuid, output_id=o_output.id)
@@ -531,6 +515,54 @@ class TMLLClient:
         self.logger.info("All data fetched successfully.")
 
         return datasets
+
+    def _calculate_intervals(self, start: int, end: int, resample_freq: str) -> List[Tuple[int, int, int]]:
+        """
+        Based on the resampling frequency, we should indicate how many items we want to fetch for XY/TIMEGRAPH data
+        from the TSP server. For example, if the resampling frequency is 1s, we should fetch 1 item per second.
+
+        Now, based on the start and end timestamps, we should calculate the number of items
+        to fetch from the TSP server. For example, if the start timestamp is 0 and the end timestamp is 1000,
+        and the resampling frequency is 1s, we should fetch 1000 items.
+
+        The formula to calculate the number of items is:
+            num_items = (end - start) / resample_freq
+        where:
+            - start: Start timestamp in nano-seconds
+            - end: End timestamp in nano-seconds
+            - resample_freq: Resampling frequency in string format (e.g., "1s", "1ms", "1us", etc.)
+
+        The catch is that, the tsp server can handle up to 65536 items at a time. So, we need to return the list
+        of intervals to fetch the XY data from the TSP server. For example, if the number of items is 100000, we should
+        return a list of two intervals with the following values:
+            - start: the start timestamp of the interval
+            - end: the end timestamp of the interval
+            - num_items: the number of items to fetch from the TSP server
+        So, the list should be like:
+            [(start1, end1, 65536), (start2, end2, 34464)]
+
+        :param start: Start timestamp
+        :type start: int
+        :param end: End timestamp
+        :type end: int
+        :param resample_freq: Resampling frequency
+        :type resample_freq: str
+        :return: List of intervals
+        :rtype: List[Tuple[int, int, int]]
+        """
+        resample_freq_timedelta = pd.to_timedelta(resample_freq).value
+
+        num_items = int((end - start) / resample_freq_timedelta)
+        intervals = []
+
+        while num_items > 0:
+            batch_size = min(num_items, 65536)
+            interval_end = start + batch_size * resample_freq_timedelta
+            intervals.append((start, interval_end, batch_size))
+            start = interval_end
+            num_items -= batch_size
+
+        return intervals
 
     @staticmethod
     def enable_instrumentation(instrumentation_file: Optional[str] = None, instrument_kernel: bool = False, verbose: bool = True) -> None:
