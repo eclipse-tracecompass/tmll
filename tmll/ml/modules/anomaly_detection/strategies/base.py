@@ -1,8 +1,10 @@
+import numpy as np
 import pandas as pd
 from typing import List, Tuple
 from abc import ABC, abstractmethod
 
 from tmll.common.services.logger import Logger
+
 
 class AnomalyDetectionStrategy(ABC):
     """
@@ -37,7 +39,7 @@ class AnomalyDetectionStrategy(ABC):
         :rtype: pd.DataFrame
         """
         return data[data > data.min()]
-    
+
     @staticmethod
     def _calculate_adaptive_window_size(data: pd.DataFrame) -> int:
         """
@@ -63,14 +65,24 @@ class AnomalyDetectionStrategy(ABC):
         :rtype: List[Tuple[pd.Timestamp, pd.Timestamp]]
         """
         window_size = AnomalyDetectionStrategy._calculate_adaptive_window_size(anomalies)
+
+        if len(anomalies.columns) > 1:
+            anomaly_array = anomalies.any(axis=1).values
+        else:
+            anomaly_array = anomalies.iloc[:, 0].values
+
+        window_means = np.zeros(len(anomalies) - window_size + 1)
+        cumsum = np.cumsum(np.insert(np.array(anomaly_array), 0, 0))
+        window_sums = cumsum[window_size:] - cumsum[:-window_size]
+        window_means = window_sums / window_size
+
         anomaly_periods = []
         start = None
 
-        for i in range(len(anomalies) - window_size + 1):
-            window = anomalies.iloc[i:i+window_size]
-            if window.any(axis=1).mean() >= threshold and start is None:
+        for i in range(len(window_means)):
+            if window_means[i] >= threshold and start is None:
                 start = anomalies.index[i]
-            elif window.any(axis=1).mean() < threshold and start is not None:
+            elif window_means[i] < threshold and start is not None:
                 anomaly_periods.append((start, anomalies.index[i+window_size-1]))
                 start = None
 
